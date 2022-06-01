@@ -14,9 +14,8 @@ import 'source_code.dart';
 
 /// Reads and formats input from stdin until closed.
 Future<void> formatStdin(
-    FormatterOptions options, List<int>? selection, String name) async {
-  var selectionStart = 0;
-  var selectionLength = 0;
+    FormatterOptions options, (int, int)? selection, String name) async {
+  var (selectionStart, selectionEnd) = selection ?? (0, 0);
 
   if (selection != null) {
     selectionStart = selection[0];
@@ -96,34 +95,35 @@ bool processDirectory(FormatterOptions options, Directory directory) {
   for (var entry in entries) {
     var displayPath = options.show.displayPath(directory.path, entry.path);
 
-    if (entry is Link) {
-      options.showSkippedLink(displayPath);
-      continue;
+    switch (entry) {
+      case Link link:
+        options.showSkippedLink(displayPath);
+
+      case File file if (!file.path.endsWith('.dart')):
+        // Skip non-Dart files.
+
+      case File file:
+        // If the path is in a subdirectory starting with ".", ignore it.
+        var parts = p.split(p.relative(entry.path, from: directory.path));
+        int? hiddenIndex;
+        for (var i = 0; i < parts.length; i++) {
+          if (parts[i].startsWith('.')) {
+            hiddenIndex = i;
+            break;
+          }
+        }
+
+        if (hiddenIndex != null) {
+          // Since we'll hide everything inside the directory starting with ".",
+          // show the directory name once instead of once for each file.
+          var hiddenPath = p.joinAll(parts.take(hiddenIndex + 1));
+          if (shownHiddenPaths.add(hiddenPath)) {
+            options.showHiddenPath(hiddenPath);
+          }
+        } else if (!processFile(options, entry, displayPath: displayPath)) {
+          success = false;
+        }
     }
-
-    if (entry is! File || !entry.path.endsWith('.dart')) continue;
-
-    // If the path is in a subdirectory starting with ".", ignore it.
-    var parts = p.split(p.relative(entry.path, from: directory.path));
-    int? hiddenIndex;
-    for (var i = 0; i < parts.length; i++) {
-      if (parts[i].startsWith('.')) {
-        hiddenIndex = i;
-        break;
-      }
-    }
-
-    if (hiddenIndex != null) {
-      // Since we'll hide everything inside the directory starting with ".",
-      // show the directory name once instead of once for each file.
-      var hiddenPath = p.joinAll(parts.take(hiddenIndex + 1));
-      if (shownHiddenPaths.add(hiddenPath)) {
-        options.showHiddenPath(hiddenPath);
-      }
-      continue;
-    }
-
-    if (!processFile(options, entry, displayPath: displayPath)) success = false;
   }
 
   return success;

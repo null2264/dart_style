@@ -98,19 +98,17 @@ class NestingBuilder {
   void nest([int? indent]) {
     indent ??= Indent.expression;
 
-    if (_pendingNesting != null) {
-      _pendingNesting = _pendingNesting!.nest(indent);
-    } else {
-      _pendingNesting = _nesting.nest(indent);
+    _pendingNesting = switch (_pendingNesting) {
+      case var nesting? => nesting.nest(indent);
+      default => _nesting.nest(indent);
     }
   }
 
   /// Discards the most recent level of expression nesting.
   void unnest() {
-    if (_pendingNesting != null) {
-      _pendingNesting = _pendingNesting!.parent;
-    } else {
-      _pendingNesting = _nesting.parent;
+    _pendingNesting = switch (_pendingNesting) {
+      case var nesting? => nesting.parent;
+      default => _nesting.parent;
     }
 
     // If this fails, an unnest() call did not have a preceding nest() call.

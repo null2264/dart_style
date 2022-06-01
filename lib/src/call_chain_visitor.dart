@@ -236,8 +236,7 @@ class CallChainVisitor {
 
     // If there are block calls, end the chain and write those without any
     // extra indentation.
-    var blockCalls = _blockCalls;
-    if (blockCalls != null) {
+    if (_blockCalls case var blockCalls?) {
       _enableRule();
       _visitor.zeroSplit();
       _disableRule();
@@ -277,53 +276,50 @@ class CallChainVisitor {
     // recursing into:
     // * The right operand in an infix operator call.
     // * The body of a `=>` function.
+    switch (expression) {
+      // Unwrap parentheses.
+      case ParenthesizedExpression(:var expression):
+        return _forcesSplit(expression);
 
-    // Unwrap parentheses.
-    while (expression is ParenthesizedExpression) {
-      expression = expression.expression;
+      // Don't split right after a collection literal.
+      case ListLiteral _:
+      case SetOrMapLiteral _:
+        return false;
+
+      // Don't split right after a non-empty curly-bodied function.
+      case FunctionExpression(:BlockFunctionBody body):
+        return body.block.statements.isEmpty;
+
+      case FunctionExpression _:
+        return false;
+
+      // If the expression ends in an argument list, base the splitting on the
+      // last argument.
+      case MethodInvocation(:var argumentList):
+      case InstanceCreationExpression(:var argumentList):
+      case FunctionExpressionInvocation(:var argumentList):
+        if (argumentList.arguments.isEmpty) return true;
+
+        var argument = argumentList.arguments.last;
+
+        // If the argument list has a trailing comma, treat it like a collection.
+        if (argument.hasCommaAfter) return false;
+
+        if (argument is NamedExpression) {
+          argument = argument.expression;
+        }
+
+        // TODO(rnystrom): This logic is similar (but not identical) to
+        // ArgumentListVisitor.hasBlockArguments. They overlap conceptually and
+        // both have their own peculiar heuristics. It would be good to unify and
+        // rationalize them.
+
+        return _forcesSplit(argument);
+
+      default:
+        // Any other kind of expression always splits.
+        return true;
     }
-
-    // Don't split right after a collection literal.
-    if (expression is ListLiteral) return false;
-    if (expression is SetOrMapLiteral) return false;
-
-    // Don't split right after a non-empty curly-bodied function.
-    if (expression is FunctionExpression) {
-      if (expression.body is! BlockFunctionBody) return false;
-
-      return (expression.body as BlockFunctionBody).block.statements.isEmpty;
-    }
-
-    // If the expression ends in an argument list, base the splitting on the
-    // last argument.
-    ArgumentList? argumentList;
-    if (expression is MethodInvocation) {
-      argumentList = expression.argumentList;
-    } else if (expression is InstanceCreationExpression) {
-      argumentList = expression.argumentList;
-    } else if (expression is FunctionExpressionInvocation) {
-      argumentList = expression.argumentList;
-    }
-
-    // Any other kind of expression always splits.
-    if (argumentList == null) return true;
-    if (argumentList.arguments.isEmpty) return true;
-
-    var argument = argumentList.arguments.last;
-
-    // If the argument list has a trailing comma, treat it like a collection.
-    if (argument.hasCommaAfter) return false;
-
-    if (argument is NamedExpression) {
-      argument = argument.expression;
-    }
-
-    // TODO(rnystrom): This logic is similar (but not identical) to
-    // ArgumentListVisitor.hasBlockArguments. They overlap conceptually and
-    // both have their own peculiar heuristics. It would be good to unify and
-    // rationalize them.
-
-    return _forcesSplit(argument);
   }
 
   /// Called when a [_MethodSelector] has written its name and is about to
@@ -409,7 +405,7 @@ class CallChainVisitor {
 ///         .method(arg)[index]
 ///         .another()!
 ///         .third();
-abstract class _Selector {
+switch class _Selector {
   /// The series of index and/or null-assertion postfix selectors that follow
   /// and are attached to this one.
   ///
@@ -418,11 +414,24 @@ abstract class _Selector {
   final List<Expression> _postfixes = [];
 
   /// Whether this selector is a property access as opposed to a method call.
-  bool get isProperty => true;
+  // This pattern of defining a sealed family of classes but defining the
+  // operations as methods on the base class with the body a switch on `this`
+  // lets you define an operation in one place but still have nice OO method
+  // syntax. It feels kind of weird, though.
+  // And remove overrides in subclasses:
+  bool get isProperty => switch (this) {
+    case _MethodSelector _ => false;
+    default => true;
+  }
 
   /// Whether this selector is a method call whose arguments are block
   /// formatted.
-  bool isBlockCall(SourceVisitor visitor) => false;
+  bool isBlockCall(SourceVisitor visitor) => switch (this) {
+    case _MethodSelector(:var _node) =>
+      ArgumentListVisitor(visitor, _node.argumentList).hasBlockArguments;
+
+    default => false;
+  }
 
   /// Write the selector portion of the expression wrapped by this [_Selector]
   /// using [visitor], followed by any postfix selectors.
@@ -432,78 +441,68 @@ abstract class _Selector {
     // Write any trailing index and null-assertion operators.
     visitor._visitor.builder.nestExpression();
     for (var postfix in _postfixes) {
-      if (postfix is FunctionExpressionInvocation) {
-        // Allow splitting between the invocations if needed.
-        visitor._visitor.soloZeroSplit();
+      switch (postfix) {
+        case FunctionExpressionInvocation invocation:
+          // Allow splitting between the invocations if needed.
+          visitor._visitor.soloZeroSplit();
 
-        visitor._visitor.visit(postfix.typeArguments);
-        visitor._visitor.visitArgumentList(postfix.argumentList);
-      } else if (postfix is IndexExpression) {
-        visitor._visitor.finishIndexExpression(postfix);
-      } else if (postfix is PostfixExpression) {
-        assert(postfix.operator.type == TokenType.BANG);
-        visitor._visitor.token(postfix.operator);
-      } else {
-        // Unexpected type.
-        assert(false);
+          visitor._visitor.visit(invocation.typeArguments);
+          visitor._visitor.visitArgumentList(invocation.argumentList);
+        case IndexExpression index:
+          visitor._visitor.finishIndexExpression(index);
+        case PostfixExpression(:var operator):
+          assert(operator.type == TokenType.BANG);
+          visitor._visitor.token(operator);
+        default:
+          // Unexpected type.
+          assert(false);
       }
     }
     visitor._visitor.builder.unnest();
   }
 
   /// Subclasses implement this to write their selector.
-  void writeSelector(CallChainVisitor visitor);
+  void writeSelector(CallChainVisitor visitor) {
+    switch (this) {
+      case _MethodSelector(:var _node):
+        visitor._visitor.token(_node.operator);
+        visitor._visitor.token(_node.methodName.token);
+
+        visitor._beforeMethodArguments(this);
+
+        visitor._visitor.builder.nestExpression();
+        visitor._visitor.visit(_node.typeArguments);
+        visitor._visitor
+            .visitArgumentList(_node.argumentList, nestExpression: false);
+        visitor._visitor.builder.unnest();
+
+      case _PrefixedSelector(:var _node):
+        visitor._visitor.token(_node.period);
+        visitor._visitor.visit(_node.identifier);
+
+      case _PropertySelector(:var _node):
+        visitor._visitor.token(_node.operator);
+        visitor._visitor.visit(_node.propertyName);
+    }
+  }
 }
 
 class _MethodSelector extends _Selector {
   final MethodInvocation _node;
 
   _MethodSelector(this._node);
-
-  @override
-  bool get isProperty => false;
-
-  @override
-  bool isBlockCall(SourceVisitor visitor) =>
-      ArgumentListVisitor(visitor, _node.argumentList).hasBlockArguments;
-
-  @override
-  void writeSelector(CallChainVisitor visitor) {
-    visitor._visitor.token(_node.operator);
-    visitor._visitor.token(_node.methodName.token);
-
-    visitor._beforeMethodArguments(this);
-
-    visitor._visitor.builder.nestExpression();
-    visitor._visitor.visit(_node.typeArguments);
-    visitor._visitor
-        .visitArgumentList(_node.argumentList, nestExpression: false);
-    visitor._visitor.builder.unnest();
-  }
 }
 
 class _PrefixedSelector extends _Selector {
   final PrefixedIdentifier _node;
 
   _PrefixedSelector(this._node);
-
-  @override
-  void writeSelector(CallChainVisitor visitor) {
-    visitor._visitor.token(_node.period);
-    visitor._visitor.visit(_node.identifier);
-  }
 }
 
 class _PropertySelector extends _Selector {
   final PropertyAccess _node;
 
   _PropertySelector(this._node);
-
-  @override
-  void writeSelector(CallChainVisitor visitor) {
-    visitor._visitor.token(_node.operator);
-    visitor._visitor.visit(_node.propertyName);
-  }
 }
 
 /// If [expression] is a null-assertion operator, returns its operand.
@@ -532,39 +531,39 @@ Expression _unwrapNullAssertion(Expression expression) {
 ///     .baz      [0], [1]
 ///     .bang()
 Expression _unwrapTarget(Expression node, List<_Selector> calls) {
-  // Don't include things that look like static method or constructor
-  // calls in the call chain because that tends to split up named
-  // constructors from their class.
-  if (node.looksLikeStaticCall) return node;
+  // Note: Assumes that node gets promoted on type tests. If not, would need
+  // extend extractor patterns to allow capturing matched object too, like:
+  //
+  //     case MethodInvocation(:var target?) invocation =>
+  //                                         ^^^^^^^^^^
+  return switch (node) {
+    // Don't include things that look like static method or constructor
+    // calls in the call chain because that tends to split up named
+    // constructors from their class.
+    case _ if (node.looksLikeStaticCall) => node;
 
-  // Selectors.
-  if (node is MethodInvocation && node.target != null) {
-    return _unwrapSelector(node.target!, _MethodSelector(node), calls);
+    // Selectors.
+    case MethodInvocation(:var target?) =>
+        _unwrapSelector(target, _MethodSelector(node), calls);
+
+    case PropertyAccess(:var target?) =>
+        _unwrapSelector(target, _PropertySelector(node), calls);
+
+    case PrefixedIdentifier(:var prefix) =>
+        _unwrapSelector(prefix, _PrefixedSelector(node), calls);
+
+    // Postfix expressions.
+    case IndexExpression(:var target?) => _unwrapPostfix(node, target, calls);
+
+    case FunctionExpressionInvocation(:var function) =>
+        _unwrapPostfix(node, function, calls);
+
+    case PostfixExpression(operator: (type: TokenType.BANG)) =>
+        _unwrapPostfix(node, node.operand, calls);
+
+    // Otherwise, it isn't a selector so we're done.
+    default => node;
   }
-
-  if (node is PropertyAccess && node.target != null) {
-    return _unwrapSelector(node.target!, _PropertySelector(node), calls);
-  }
-
-  if (node is PrefixedIdentifier) {
-    return _unwrapSelector(node.prefix, _PrefixedSelector(node), calls);
-  }
-
-  // Postfix expressions.
-  if (node is IndexExpression && node.target != null) {
-    return _unwrapPostfix(node, node.target!, calls);
-  }
-
-  if (node is FunctionExpressionInvocation) {
-    return _unwrapPostfix(node, node.function, calls);
-  }
-
-  if (node is PostfixExpression && node.operator.type == TokenType.BANG) {
-    return _unwrapPostfix(node, node.operand, calls);
-  }
-
-  // Otherwise, it isn't a selector so we're done.
-  return node;
 }
 
 Expression _unwrapPostfix(

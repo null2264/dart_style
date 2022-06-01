@@ -71,8 +71,7 @@ class LineWriter {
     var key = _BlockKey(chunk, column);
 
     // Use the cached one if we have it.
-    var cached = _blockCache[key];
-    if (cached != null) return cached;
+    if (_blockCache[key] case var cached?) return cached;
 
     var writer = LineWriter._(
         chunk.block.chunks, _lineEnding, pageWidth, column, _blockCache);
@@ -193,13 +192,8 @@ class LineWriter {
   /// Writes [chunk] to the output and updates the selection if the chunk
   /// contains a selection marker.
   void _writeChunk(Chunk chunk) {
-    if (chunk.selectionStart != null) {
-      _selectionStart = length + chunk.selectionStart!;
-    }
-
-    if (chunk.selectionEnd != null) {
-      _selectionEnd = length + chunk.selectionEnd!;
-    }
+    if (chunk.selectionStart case var start?) _selectionStart = length + start;
+    if (chunk.selectionEnd case var end?) _selectionEnd = length + end;
 
     _buffer.write(chunk.text);
   }

@@ -6,6 +6,8 @@ import 'dart:io';
 import '../source_code.dart';
 import 'formatter_options.dart';
 
+// Could do something similar to Show changes here.
+
 /// The kind of summary shown after all formatting is complete.
 class Summary {
   static const Summary none = Summary._();

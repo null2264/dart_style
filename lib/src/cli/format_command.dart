@@ -37,12 +37,13 @@ class FormatCommand extends Command<int> {
       return 0;
     }
 
-    var show = const {
-      'all': Show.all,
-      'changed': Show.changed,
-      'none': Show.none
-    }[argResults['show']]!;
+    var show = switch (argResults['show']!) {
+      case 'all' => Show.all;
+      case 'changed' => Show.changed;
+      case 'none' => Show.none;
+    }
 
+    // Likewise.
     var output = const {
       'write': Output.write,
       'show': Output.show,
@@ -50,14 +51,10 @@ class FormatCommand extends Command<int> {
       'json': Output.json,
     }[argResults['output']]!;
 
-    var summary = Summary.none;
-    switch (argResults['summary'] as String) {
-      case 'line':
-        summary = Summary.line();
-        break;
-      case 'profile':
-        summary = Summary.profile();
-        break;
+    var summary = switch (argResults['summary'] as String) {
+      case 'line' => Summary.line();
+      case 'profile' => Summary.profile();
+      default => Summary.none;
     }
 
     // If the user is sending code through stdin, default the output to stdout.
@@ -87,13 +84,19 @@ class FormatCommand extends Command<int> {
       usageException('Cannot print a summary with JSON output.');
     }
 
-    int pageWidth;
-    try {
-      pageWidth = int.parse(argResults['line-length']);
-    } on FormatException catch (_) {
-      usageException('--line-length must be an integer, was '
-          '"${argResults['line-length']}".');
+    var pageWidth = switch (int.tryParse(argResults['line-length']) {
+      case null =>
+          usageException('--line-length must be an integer, was '
+              '"${argResults['line-length']}".');
+      default var width => width;
     }
+
+    // Probably better as just:
+    /*
+    var pageWidth = int.tryParse(argResults['line-length'] ??
+        usageException('--line-length must be an integer, was '
+              '"${argResults['line-length']}".');
+    */
 
     int indent;
     try {

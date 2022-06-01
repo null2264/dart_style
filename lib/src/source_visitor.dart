@@ -163,39 +163,43 @@ class SourceVisitor extends ThrowingAstVisitor {
     // expression is the only string in an argument list.
     var shouldNest = true;
 
+    switch (node.parent) {
     var parent = node.parent;
-    if (parent is ArgumentList) {
-      shouldNest = false;
+      case ArgumentList(:var arguments):
+        shouldNest = false;
 
-      for (var argument in parent.arguments) {
-        if (argument == node) continue;
-        if (argument is StringLiteral) {
-          shouldNest = true;
-          break;
+        for (var argument in arguments) {
+          if (argument == node) continue;
+          if (argument is StringLiteral) {
+            shouldNest = true;
+            break;
+          }
         }
-      }
-    } else if (parent is Assertion) {
-      // Treat asserts like argument lists.
-      shouldNest = false;
-      if (parent.condition != node && parent.condition is StringLiteral) {
-        shouldNest = true;
-      }
 
-      if (parent.message != node && parent.message is StringLiteral) {
-        shouldNest = true;
-      }
-    } else if (parent is VariableDeclaration ||
-        parent is AssignmentExpression &&
-            parent.rightHandSide == node &&
-            parent.parent is ExpressionStatement) {
-      // Don't add extra indentation in a variable initializer or assignment:
-      //
-      //     var variable =
-      //         "no extra"
-      //         "indent";
-      shouldNest = false;
-    } else if (parent is NamedExpression || parent is ExpressionFunctionBody) {
-      shouldNest = false;
+      case Assertion(:var condition, :var message):
+        // Treat asserts like argument lists.
+        shouldNest = false;
+        if (condition != node && condition is StringLiteral) {
+          shouldNest = true;
+        }
+
+        if (message != node && message is StringLiteral) {
+          shouldNest = true;
+        }
+
+      case VariableDeclaration():
+      case AssignmentExpression(:var rightHandSide, :var parent)
+          if (rightHandSide == node && parent is ExpressionStatement):
+        // Don't add extra indentation in a variable initializer or assignment:
+        //
+        //     var variable =
+        //         "no extra"
+        //         "indent";
+        shouldNest = false;
+
+      case NamedExpression():
+      case ExpressionFunctionBody():
+        shouldNest = false;
     }
 
     builder.startSpan();
@@ -1235,40 +1239,40 @@ class SourceVisitor extends ThrowingAstVisitor {
     var cascade = statement.expression as CascadeExpression;
     if (cascade.cascadeSections.length != 1) return false;
 
-    var target = cascade.target;
-    if (target is AsExpression ||
-        target is AwaitExpression ||
-        target is BinaryExpression ||
-        target is ConditionalExpression ||
-        target is IsExpression ||
-        target is PostfixExpression ||
-        target is PrefixExpression) {
-      // In these cases, the cascade target needs to be parenthesized before
-      // removing the cascade, otherwise the semantics will change.
-      _fixCascadeByParenthesizingTarget(statement);
-      return true;
-    } else if (target is BooleanLiteral ||
-        target is FunctionExpression ||
-        target is IndexExpression ||
-        target is InstanceCreationExpression ||
-        target is IntegerLiteral ||
-        target is ListLiteral ||
-        target is NullLiteral ||
-        target is MethodInvocation ||
-        target is ParenthesizedExpression ||
-        target is PrefixedIdentifier ||
-        target is PropertyAccess ||
-        target is SimpleIdentifier ||
-        target is StringLiteral ||
-        target is ThisExpression) {
-      // OK to simply remove the cascade.
-      _removeCascade(statement);
-      return true;
-    } else {
-      // If we get here, some new syntax was added to the language that the fix
-      // does not yet support. Leave it as is.
-      return false;
-    }
+    switch (cascade.target) {
+      case AsExpression _:
+      case AwaitExpression _:
+      case BinaryExpression _:
+      case ConditionalExpression _:
+      case IsExpression _:
+      case PostfixExpression _:
+      case PrefixExpression _:
+        // In these cases, the cascade target needs to be parenthesized before
+        // removing the cascade, otherwise the semantics will change.
+        _fixCascadeByParenthesizingTarget(statement);
+        return true;
+      case BooleanLiteral _:
+      case FunctionExpression _:
+      case IndexExpression _:
+      case InstanceCreationExpression _:
+      case IntegerLiteral _:
+      case ListLiteral _:
+      case NullLiteral _:
+      case MethodInvocation _:
+      case ParenthesizedExpression _:
+      case PrefixedIdentifier _:
+      case PropertyAccess _:
+      case SimpleIdentifier _:
+      case StringLiteral _:
+      case ThisExpression _:
+        // OK to simply remove the cascade.
+        _removeCascade(statement);
+        return true;
+      default:
+        // If we get here, some new syntax was added to the language that the fix
+        // does not yet support. Leave it as is.
+        return false;
+    };
   }
 
   @override
@@ -1872,6 +1876,7 @@ class SourceVisitor extends ThrowingAstVisitor {
     builder.unnest();
 
     void visitClause(Statement clause) {
+      // Could use a switch here in the obvious way.
       if (clause is Block || clause is IfStatement) {
         space();
         visit(clause);
@@ -2951,24 +2956,25 @@ class SourceVisitor extends ThrowingAstVisitor {
 
   /// Visits the body statement of a `for`, `for in`, or `while` loop.
   void _visitLoopBody(Statement body) {
-    if (body is EmptyStatement) {
-      // No space before the ";".
-      visit(body);
-    } else if (body is Block) {
-      space();
-      visit(body);
-    } else {
-      // Allow splitting in a statement-bodied loop even though it's against
-      // the style guide. Since we can't fix the code itself to follow the
-      // style guide, we should at least format it as well as we can.
-      builder.indent();
-      builder.startRule();
+    switch (body) {
+      case EmptyStatement _:
+        // No space before the ";".
+        visit(body);
+      case Block _:
+        space();
+        visit(body);
+      default:
+        // Allow splitting in a statement-bodied loop even though it's against
+        // the style guide. Since we can't fix the code itself to follow the
+        // style guide, we should at least format it as well as we can.
+        builder.indent();
+        builder.startRule();
 
-      builder.split(nest: false, space: true);
-      visit(body);
+        builder.split(nest: false, space: true);
+        visit(body);
 
-      builder.endRule();
-      builder.unindent();
+        builder.endRule();
+        builder.unindent();
     }
   }
 
@@ -3272,17 +3278,14 @@ class SourceVisitor extends ThrowingAstVisitor {
     //
     //     if (condition) {
     //     } else ...
-    if (node.parent is IfStatement) {
-      var ifStatement = node.parent as IfStatement;
+    if (node.parent case IfStatement ifStatement) {
       return ifStatement.elseStatement != null &&
           ifStatement.thenStatement == node;
     }
 
     // Force a split in an empty catch if there is a finally or other catch
     // after it:
-    if (node.parent is CatchClause && node.parent!.parent is TryStatement) {
-      var tryStatement = node.parent!.parent as TryStatement;
-
+    if (node.parent case CatchClause(parent: TryStatement tryStatement)) {
       // Split the catch if there is something after it, a finally or another
       // catch.
       return tryStatement.finallyBlock != null ||
@@ -3316,11 +3319,12 @@ class SourceVisitor extends ThrowingAstVisitor {
   ///     var builder =
   ///         new SomeBuilderClass()..method()..method();
   int _assignmentCost(Expression rightHandSide) {
-    if (rightHandSide is ListLiteral) return Cost.assignBlock;
-    if (rightHandSide is SetOrMapLiteral) return Cost.assignBlock;
-    if (rightHandSide is CascadeExpression) return Cost.assignBlock;
-
-    return Cost.assign;
+    return switch (rightHandSide) {
+      caseListLiteral _ => Cost.assignBlock;
+      caseSetOrMapLiteral _ => Cost.assignBlock;
+      caseCascadeExpression _ => Cost.assignBlock;
+      default => Cost.assign;
+    }
   }
 
   /// Returns `true` if the collection withs [elements] delimited by
@@ -3431,7 +3435,8 @@ class SourceVisitor extends ThrowingAstVisitor {
 
   /// If [keyword] is `const`, begins a new constant context.
   void _startPossibleConstContext(Token? keyword) {
-    if (keyword != null && keyword.keyword == Keyword.CONST) {
+    // Probably trying too hard.
+    if (keyword case (keyword: Keyword.CONST)?) {
       _constNesting++;
     }
   }
@@ -3762,13 +3767,11 @@ class SourceVisitor extends ThrowingAstVisitor {
 
     // If this text contains either of the selection endpoints, mark them in
     // the chunk.
-    var start = _getSelectionStartWithin(offset, text.length);
-    if (start != null) {
+    if (_getSelectionStartWithin(offset, text.length) case var start?) {
       builder.startSelectionFromEnd(text.length - start);
     }
 
-    var end = _getSelectionEndWithin(offset, text.length);
-    if (end != null) {
+    if (_getSelectionEndWithin(offset, text.length) case var end?) {
       builder.endSelectionFromEnd(text.length - end);
     }
 

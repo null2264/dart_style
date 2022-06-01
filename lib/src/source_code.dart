@@ -55,29 +55,22 @@ class SourceCode {
       this.selectionStart,
       this.selectionLength}) {
     // Must either provide both selection bounds or neither.
-    if ((selectionStart == null) != (selectionLength == null)) {
-      throw ArgumentError(
-          'Is selectionStart is provided, selectionLength must be too.');
-    }
-
-    if (selectionStart != null) {
-      if (selectionStart! < 0) {
+    switch ((selectionStart, selectionLength)) {
+      case (var _?, null):
+      case (null, var _?):
+        throw ArgumentError(
+            'If selectionStart is provided, selectionLength must be too.');
+      case (var start?, _) if (start < 0):
         throw ArgumentError('selectionStart must be non-negative.');
-      }
 
-      if (selectionStart! > text.length) {
+      case (var start?, _) if (start > text.length):
         throw ArgumentError('selectionStart must be within text.');
-      }
-    }
 
-    if (selectionLength != null) {
-      if (selectionLength! < 0) {
+      case (_, var length?) if (length < 0):
         throw ArgumentError('selectionLength must be non-negative.');
-      }
 
-      if (selectionStart! + selectionLength! > text.length) {
+      case (var start?, var length?) if (start + length > text.length):
         throw ArgumentError('selectionLength must end within text.');
-      }
     }
   }
 }

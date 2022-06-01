@@ -59,17 +59,16 @@ class DartFormatter {
   /// If [uri] is given, it is a [String] or [Uri] used to identify the file
   /// being formatted in error messages.
   String format(String source, {uri}) {
-    if (uri == null) {
-      // Do nothing.
-    } else if (uri is Uri) {
-      uri = uri.toString();
-    } else if (uri is String) {
-      // Do nothing.
-    } else {
-      throw ArgumentError('uri must be `null`, a Uri, or a String.');
+    var uriString = switch (uri) {
+      case null => null;
+      case Uri uri => uri.toString();
+      case String string => string;
+      default:
+        throw ArgumentError('uri must be `null`, a Uri, or a String.');
     }
 
-    return formatSource(SourceCode(source, uri: uri, isCompilationUnit: true))
+    return formatSource(
+            SourceCode(source, uri: uriString, isCompilationUnit: true))
         .text;
   }
 

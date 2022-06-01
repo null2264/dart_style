@@ -200,17 +200,19 @@ class Chunk extends Selection {
   bool indentBlock(int Function(Rule) getValue) {
     if (!isBlock) return false;
 
-    var argument = block.argument;
-    if (argument == null) return false;
+    // Something like guard-let would be nice here.
+    if (block.argument case argument?) {
+      var rule = argument.rule;
 
-    var rule = argument.rule;
+      // There may be no rule if the block occurs inside a string interpolation.
+      // In that case, it's not clear if anything will look particularly nice, but
+      // expression nesting is probably marginally better.
+      if (rule == Rule.dummy) return true;
 
-    // There may be no rule if the block occurs inside a string interpolation.
-    // In that case, it's not clear if anything will look particularly nice, but
-    // expression nesting is probably marginally better.
-    if (rule == Rule.dummy) return true;
-
-    return rule.isSplit(getValue(rule), argument);
+      return rule.isSplit(getValue(rule), argument);
+    } else {
+      return false;
+    }
   }
 
   // Mark whether this chunk can divide the range of chunks.
@@ -248,22 +250,6 @@ class ChunkBlock {
   final List<Chunk> chunks = [];
 
   ChunkBlock(this.argument);
-}
-
-/// The in-progress state for a [Span] that has been started but has not yet
-/// been completed.
-class OpenSpan {
-  /// Index of the first chunk contained in this span.
-  final int start;
-
-  /// The cost applied when the span is split across multiple lines or `null`
-  /// if the span is for a multisplit.
-  final int cost;
-
-  OpenSpan(this.start, this.cost);
-
-  @override
-  String toString() => 'OpenSpan($start, \$$cost)';
 }
 
 /// Delimits a range of chunks that must end up on the same line to avoid an

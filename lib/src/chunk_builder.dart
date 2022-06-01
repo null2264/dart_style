@@ -85,7 +85,8 @@ class ChunkBuilder {
   final _lazyRules = <Rule>[];
 
   /// The nested stack of spans that are currently being written.
-  final _openSpans = <OpenSpan>[];
+  // Maybe:
+  final _openSpans = <{int start, int cost}>[];
 
   /// The current state.
   final _nesting = NestingBuilder();
@@ -359,6 +360,14 @@ class ChunkBuilder {
     }
 
     // See if it's a JavaDoc comment.
+    // Would nice to use something like:
+    //
+    //     if (_javaDocComment.firstMatch(comment.text) case var match?) {
+    //       ...
+    //     }
+    //
+    // But that would require indenting the rest of the body of the function.
+    // Something like Swift's guard-let would help here.
     var match = _javaDocComment.firstMatch(comment.text);
     if (match == null) {
       _writeText(comment.text, chunk);
@@ -374,8 +383,7 @@ class ChunkBuilder {
 
       // Remove any leading "*" from the middle lines.
       if (i > 0 && i < lines.length - 1) {
-        var match = _javaDocLine.firstMatch(line);
-        if (match != null) {
+        if (_javaDocLine.firstMatch(line) case var match?) {
           line = match[1]!;
         }
       }
@@ -425,20 +433,20 @@ class ChunkBuilder {
   ///
   /// Each call to this needs a later matching call to [endSpan].
   void startSpan([int cost = Cost.normal]) {
-    _openSpans.add(OpenSpan(_chunks.length, cost));
+    _openSpans.add({start: _chunks.length, cost: cost});
   }
 
   /// Ends the innermost span.
   void endSpan() {
-    var openSpan = _openSpans.removeLast();
+    var (:start, :cost) = _openSpans.removeLast();
 
     // A span that just covers a single chunk can't be split anyway.
     var end = _chunks.length;
-    if (openSpan.start == end) return;
+    if (start == end) return;
 
     // Add the span to every chunk that can split it.
-    var span = Span(openSpan.cost);
-    for (var i = openSpan.start; i < end; i++) {
+    var span = Span(cost);
+    for (var i = start; i < end; i++) {
       var chunk = _chunks[i];
       if (!chunk.rule.isHardened) chunk.spans.add(span);
     }
@@ -709,12 +717,15 @@ class ChunkBuilder {
     // Not if there is nothing before it.
     if (_chunks.isEmpty) return null;
 
-    // Don't move a comment to a preceding line.
-    if (comment.linesBefore != 0) return null;
+    // Probably not actually worth using a switch here.
+    switch (comment) {
+      // Don't move a comment to a preceding line.
+      case _ where comment.linesBefore != 0: return null;
 
-    // Multi-line comments are always pushed to the next line.
-    if (comment.type == CommentType.doc) return null;
-    if (comment.type == CommentType.block) return null;
+      // Multi-line comments are always pushed to the next line.
+      case (type: CommentType.doc) return null;
+      case (type: CommentType.block) return null;
+    }
 
     var chunk = _chunks.last;
 

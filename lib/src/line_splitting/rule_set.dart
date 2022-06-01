@@ -78,10 +78,10 @@ class RuleSet {
 
       var constraint = rule.constrain(value, other);
 
-      if (otherValue == null) {
+      switch ((otherValue, constraint)) {
         // The other rule is unbound, so see if we can constrain it eagerly to
         // a value now.
-        if (constraint == Rule.mustSplit) {
+        case (null, Rule.mustSplit):
           // If we know the rule has to split and there's only one way it can,
           // just bind that.
           if (other.numValues == 2) {
@@ -89,27 +89,27 @@ class RuleSet {
           } else {
             onSplitRule(other);
           }
-        } else if (constraint != null) {
+        case (null, var constraint?):
           // Bind the other rule to its value and recursively propagate its
           // constraints.
           if (!tryBind(rules, other, constraint, onSplitRule)) return false;
-        }
-      } else {
-        // It's already bound, so see if the new rule's constraint disallows
-        // that value.
-        if (constraint == Rule.mustSplit) {
-          if (otherValue == Rule.unsplit) return false;
-        } else if (constraint != null) {
-          if (otherValue != constraint) return false;
-        }
 
-        // See if the other rule's constraint allows us to use this value.
-        constraint = other.constrain(otherValue, rule);
-        if (constraint == Rule.mustSplit) {
-          if (value == Rule.unsplit) return false;
-        } else if (constraint != null) {
-          if (value != constraint) return false;
-        }
+          // It's already bound, so see if the new rule's constraint disallows
+          // that value.
+        case (var _?, Rule.mustSplit):
+          if (otherValue == Rule.unsplit) return false;
+        case (var _?, var constraint?):
+          if (otherValue != constraint) return false;
+        case (var _?, _):
+          // See if the other rule's constraint allows us to use this value.
+          switch (other.constrain(otherValue, rule)) {
+            case Rule.mustSplit:
+              if (value == Rule.unsplit) return false;
+            case var constraint?:
+              if (value != constraint) return false;
+            default:
+          }
+        default:
       }
     }
 

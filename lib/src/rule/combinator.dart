@@ -83,29 +83,19 @@ class CombinatorRule extends Rule {
 
   @override
   bool isSplitAtValue(int value, Chunk chunk) {
-    switch (value) {
-      case 1:
-        // Just split at the combinators.
-        return _combinators.contains(chunk);
+    return switch ((value, _named.length)) {
+      // Just split at the combinators.
+      case (1, _) => _combinators.contains(chunk);
 
-      case 2:
-        // Split at the combinators and the first set of names.
-        return _isCombinatorSplit(0, chunk);
+      // Split at the combinators and the first set of names.
+      case (2, _) => _isCombinatorSplit(0, chunk);
 
-      case 3:
-        // If there is two combinators, just split at the combinators and the
-        // second set of names.
-        if (_names.length == 2) {
-          // Two sets of combinators, so just split at the combinators and the
-          // second set of names.
-          return _isCombinatorSplit(1, chunk);
-        }
+      // Two sets of combinators, so just split at the combinators and the
+      // second set of names.
+      case (3, 2) => _isCombinatorSplit(1, chunk);
 
-        // Split everything.
-        return true;
-
-      default:
-        return true;
+      // Split everything.
+      default => true;
     }
   }
 
