@@ -65,7 +65,7 @@ class NestingLevel extends FastHash {
 
     totalIndent = 0;
 
-    if (parent case var parent?) {
+    if (var parent? = parent) {
       parent.refreshTotalUsedIndent(usedNesting);
       totalIndent += parent.totalUsedIndent;
     }

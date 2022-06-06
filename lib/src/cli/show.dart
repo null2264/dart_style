@@ -34,9 +34,7 @@ enum Show {
   /// in.
   String displayPath(String directory, String file) {
     switch (this) {
-      case Show.dryRun:
-      case Show.legacy:
-      case Show.overwrite:
+      case Show.dryRun | Show.legacy | Show.overwrite:
         return p.relative(file, from: directory);
       default:
         return p.normalize(file);
@@ -48,8 +46,7 @@ enum Show {
   /// Returns whether or not this file should be displayed.
   bool file(String path, {required bool changed, required bool overwritten}) {
     switch (this) {
-      case Show.all:
-      case Show.overwrite:
+      case Show.all | Show.overwrite:
         if (changed) {
           _showFileChange(path, overwritten: overwritten);
         } else {
@@ -74,8 +71,7 @@ enum Show {
   /// Describes the directory whose contents are about to be processed.
   void directory(String path) {
     switch (this) {
-      case Show.legacy:
-      case Show.overwrite:
+      case Show.legacy | Show.overwrite:
         print('Formatting directory $directory:');
       default:
         // Do nothing.
@@ -85,8 +81,7 @@ enum Show {
   /// Describes the symlink at [path] that wasn't followed.
   void skippedLink(String path) {
     switch (this) {
-      case Show.legacy:
-      case Show.overwrite:
+      case Show.legacy | Show.overwrite:
         print('Skipping link $path');
       default:
         // Do nothing.
@@ -96,8 +91,7 @@ enum Show {
   /// Describes the hidden [path] that wasn't processed.
   void hiddenPath(String path) {
     switch (this) {
-      case Show.legacy:
-      case Show.overwrite:
+      case Show.legacy | Show.overwrite:
         print('Skipping hidden path $path');
       default:
         // Do nothing.

@@ -41,6 +41,7 @@ class FormatCommand extends Command<int> {
       case 'all' => Show.all;
       case 'changed' => Show.changed;
       case 'none' => Show.none;
+      default => throw ArgumentError();
     }
 
     // Likewise.
@@ -85,10 +86,10 @@ class FormatCommand extends Command<int> {
     }
 
     var pageWidth = switch (int.tryParse(argResults['line-length']) {
-      case null =>
+      case width? => width;
+      default =>
           usageException('--line-length must be an integer, was '
               '"${argResults['line-length']}".');
-      default var width => width;
     }
 
     // Probably better as just:

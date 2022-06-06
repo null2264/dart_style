@@ -9,11 +9,12 @@ extension AstNodeExtensions on AstNode {
   Token? get commaAfter {
     var next = endToken.next!;
     return switch(next) {
-      case (type: TokenType.COMMA) => next;
+      case Token(type: TokenType.COMMA) => next;
 
       // TODO(sdk#38990): endToken doesn't include the "?" on a nullable
       // function-typed formal, so check for that case and handle it.
-      case (type: TokenType.QUESTION, next: (type: TokenType.COMMA)) =>
+      case Token(type: TokenType.QUESTION, next:
+              Token(type: TokenType.COMMA)!) =>
           next.next;
 
       default => null;
@@ -42,28 +43,23 @@ extension AstNodeExtensions on AstNode {
   /// Otherwise, returns `null`.
   Token? get spreadCollectionBracket {
     return switch (this) {
-      case SpreadElement(:ListLiteral expression)
-              if (!expression.elements.isEmptyBody(expression.rightBracket)) =>
+      case SpreadElement(ListLiteral expression)
+              when !expression.elements.isEmptyBody(expression.rightBracket) =>
           expression.leftBracket;
-      case SpreadElement(:SetOrMapLiteral expression)
+      case SpreadElement(SetOrMapLiteral expression)
               if (!expression.elements.isEmptyBody(expression.rightBracket)) =>
           expression.leftBracket;
       default => null;
     }
     // Or maybe:
     /*
-    switch (this) {
+    return switch (this) {
       case SpreadElement(
-              expression: ListLiteral(
-                  :var elements, :var leftBracket, :var rightBracket))
-          if (!elements.isEmptyBody(rightBracket)):
-      case SpreadElement(
-              expression: SetOrMapLiteral(
-                  :var elements, :var leftBracket, :var rightBracket))
-          if (!elements.isEmptyBody(rightBracket)):
-        return leftBracket;
-      default:
-        return null;
+              expression: ListLiteral(elements, leftBracket, rightBracket))
+         | SpreadElement(
+              expression: SetOrMapLiteral(elements, leftBracket, rightBracket))
+          when !elements.isEmptyBody(rightBracket) => leftBracket;
+      default => null;
     }
     */
   }
@@ -94,17 +90,13 @@ extension ExpressionExtensions on Expression {
   ///       2,
   ///     ]..addAll(numbers);
   bool get isCollectionLike {
-    // Could be a switch expression if those supported sharing bodies across
-    // cases.
     switch (this) {
-      case ListLiteral _:
-      case SetOrMapLiteral _:
-        return false;
+      case ListLiteral _ | SetOrMapLiteral _ => false;
 
       // If the target is a call with a trailing comma in the argument list,
       // treat it like a collection literal.
-      case InvocationExpression(:var argumentList):
-      case InstanceCreationExpression(:var argumentList):
+      case InvocationExpression(argumentList)
+         | InstanceCreationExpression(argumentList) =>
 
         // TODO(rnystrom): Do we want to allow an invocation where the last
         // argument is a collection literal? Like:
@@ -112,10 +104,9 @@ extension ExpressionExtensions on Expression {
         //     foo(argument, [
         //       element
         //     ])..cascade();
-        return !arguments.arguments.hasCommaAfter;
+        !arguments.arguments.hasCommaAfter;
 
-      default:
-        return false;
+      default => false;
     }
   }
 
@@ -123,7 +114,7 @@ extension ExpressionExtensions on Expression {
   bool get isTrailingCommaArgument {
     return switch (this) {
       case NamedExpression named => named.isTrailingCommaArgument;
-      case ArgumentList(:var arguments) => arguments.hasCommaAfter;
+      case ArgumentList(arguments) => arguments.hasCommaAfter;
       default => false;
     }
   }
@@ -156,17 +147,17 @@ extension ExpressionExtensions on Expression {
       // A prefixed unnamed constructor call:
       //
       //     prefix.Foo();
-      case MethodInvocation(:SimpleIdentifier target, :var methodName)
-          if (_looksLikeClassName(methodName.name)) => true;
+      case MethodInvocation(SimpleIdentifier target, methodName)
+          when _looksLikeClassName(methodName.name) => true;
 
       // A prefixed or unprefixed named constructor call:
       //
       //     Foo.named();
       //     prefix.Foo.named();
-      case MethodInvocation(:PrefixedIdentifier target) =>
+      case MethodInvocation(PrefixedIdentifier target) =>
           target.looksLikeStaticCall;
 
-      case SimpleIdentifier(:var name) if (_looksLikeClassName(name) => true;
+      case SimpleIdentifier(name) when _looksLikeClassName(name) => true;
 
       default => false;
     }
@@ -178,11 +169,10 @@ extension ExpressionExtensions on Expression {
   /// letter (so that we can distinguish them from SCREAMING_CAPS constants).
   static bool _looksLikeClassName(String name) {
     // Handle the weird lowercase corelib names.
-    // TODO: Could use a regular switch here.
-    if (name == 'bool') return true;
-    if (name == 'double') return true;
-    if (name == 'int') return true;
-    if (name == 'num') return true;
+    switch (name) {
+      case 'bool' | 'double' | 'int' | 'num': return true;
+      default:
+    }
 
     // TODO(rnystrom): A simpler implementation is to test against the regex
     // "_?[A-Z].*?[a-z]". However, that currently has much worse performance on
@@ -230,12 +220,11 @@ extension CascadeExpressionExtensions on CascadeExpression {
     //     a ? b : c..d();
     //
     // Here, the cascade is applied to the result of the conditional, not "c".
-    // TODO: Would be nice to be able to share a body across cases.
     return switch (this) {
-      case ConditionalExpression _ => false;
-      case BinaryExpression _ => false;
-      case PrefixExpression _ => false;
-      case AwaitExpression _ => false;
+      case ConditionalExpression _
+         | BinaryExpression _
+         | PrefixExpression _
+         | AwaitExpression _ => false;
       default => true;
     }
   }

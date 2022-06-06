@@ -718,13 +718,12 @@ class ChunkBuilder {
     if (_chunks.isEmpty) return null;
 
     // Probably not actually worth using a switch here.
-    switch (comment) {
+    switch (comment.type) {
       // Don't move a comment to a preceding line.
-      case _ where comment.linesBefore != 0: return null;
+      case _ when comment.linesBefore != 0: return null;
 
       // Multi-line comments are always pushed to the next line.
-      case (type: CommentType.doc) return null;
-      case (type: CommentType.block) return null;
+      case CommentType.doc | CommentType.block: return null;
     }
 
     var chunk = _chunks.last;

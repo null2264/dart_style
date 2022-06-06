@@ -99,8 +99,9 @@ bool processDirectory(FormatterOptions options, Directory directory) {
       case Link link:
         options.showSkippedLink(displayPath);
 
-      case File file if (!file.path.endsWith('.dart')):
+      case File file when !file.path.endsWith('.dart'):
         // Skip non-Dart files.
+        break;
 
       case File file:
         // If the path is in a subdirectory starting with ".", ignore it.

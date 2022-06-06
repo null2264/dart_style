@@ -164,8 +164,7 @@ class SourceVisitor extends ThrowingAstVisitor {
     var shouldNest = true;
 
     switch (node.parent) {
-    var parent = node.parent;
-      case ArgumentList(:var arguments):
+      case ArgumentList(arguments):
         shouldNest = false;
 
         for (var argument in arguments) {
@@ -176,7 +175,7 @@ class SourceVisitor extends ThrowingAstVisitor {
           }
         }
 
-      case Assertion(:var condition, :var message):
+      case Assertion(condition, message):
         // Treat asserts like argument lists.
         shouldNest = false;
         if (condition != node && condition is StringLiteral) {
@@ -188,8 +187,8 @@ class SourceVisitor extends ThrowingAstVisitor {
         }
 
       case VariableDeclaration():
-      case AssignmentExpression(:var rightHandSide, :var parent)
-          if (rightHandSide == node && parent is ExpressionStatement):
+      case AssignmentExpression(rightHandSide, parent)
+          when rightHandSide == node && parent is ExpressionStatement:
         // Don't add extra indentation in a variable initializer or assignment:
         //
         //     var variable =
@@ -3436,7 +3435,7 @@ class SourceVisitor extends ThrowingAstVisitor {
   /// If [keyword] is `const`, begins a new constant context.
   void _startPossibleConstContext(Token? keyword) {
     // Probably trying too hard.
-    if (keyword case (keyword: Keyword.CONST)?) {
+    if (var Token(keyword: Keyword.CONST)? = keyword) {
       _constNesting++;
     }
   }
@@ -3767,11 +3766,11 @@ class SourceVisitor extends ThrowingAstVisitor {
 
     // If this text contains either of the selection endpoints, mark them in
     // the chunk.
-    if (_getSelectionStartWithin(offset, text.length) case var start?) {
+    if (var start? = _getSelectionStartWithin(offset, text.length)) {
       builder.startSelectionFromEnd(text.length - start);
     }
 
-    if (_getSelectionEndWithin(offset, text.length) case var end?) {
+    if (var end? = _getSelectionEndWithin(offset, text.length)) {
       builder.endSelectionFromEnd(text.length - end);
     }
 

@@ -236,7 +236,7 @@ class CallChainVisitor {
 
     // If there are block calls, end the chain and write those without any
     // extra indentation.
-    if (_blockCalls case var blockCalls?) {
+    if (var blockCalls? _blockCalls) {
       _enableRule();
       _visitor.zeroSplit();
       _disableRule();
@@ -278,16 +278,15 @@ class CallChainVisitor {
     // * The body of a `=>` function.
     switch (expression) {
       // Unwrap parentheses.
-      case ParenthesizedExpression(:var expression):
+      case ParenthesizedExpression(expression):
         return _forcesSplit(expression);
 
       // Don't split right after a collection literal.
-      case ListLiteral _:
-      case SetOrMapLiteral _:
+      case ListLiteral _ | SetOrMapLiteral _:
         return false;
 
       // Don't split right after a non-empty curly-bodied function.
-      case FunctionExpression(:BlockFunctionBody body):
+      case FunctionExpression(BlockFunctionBody body):
         return body.block.statements.isEmpty;
 
       case FunctionExpression _:
@@ -295,9 +294,9 @@ class CallChainVisitor {
 
       // If the expression ends in an argument list, base the splitting on the
       // last argument.
-      case MethodInvocation(:var argumentList):
-      case InstanceCreationExpression(:var argumentList):
-      case FunctionExpressionInvocation(:var argumentList):
+      case MethodInvocation(argumentList):
+      case InstanceCreationExpression(argumentList):
+      case FunctionExpressionInvocation(argumentList):
         if (argumentList.arguments.isEmpty) return true;
 
         var argument = argumentList.arguments.last;
@@ -427,7 +426,7 @@ switch class _Selector {
   /// Whether this selector is a method call whose arguments are block
   /// formatted.
   bool isBlockCall(SourceVisitor visitor) => switch (this) {
-    case _MethodSelector(:var _node) =>
+    case _MethodSelector(_node) =>
       ArgumentListVisitor(visitor, _node.argumentList).hasBlockArguments;
 
     default => false;
@@ -450,7 +449,7 @@ switch class _Selector {
           visitor._visitor.visitArgumentList(invocation.argumentList);
         case IndexExpression index:
           visitor._visitor.finishIndexExpression(index);
-        case PostfixExpression(:var operator):
+        case PostfixExpression(operator):
           assert(operator.type == TokenType.BANG);
           visitor._visitor.token(operator);
         default:
@@ -464,7 +463,7 @@ switch class _Selector {
   /// Subclasses implement this to write their selector.
   void writeSelector(CallChainVisitor visitor) {
     switch (this) {
-      case _MethodSelector(:var _node):
+      case _MethodSelector(_node):
         visitor._visitor.token(_node.operator);
         visitor._visitor.token(_node.methodName.token);
 
@@ -476,11 +475,11 @@ switch class _Selector {
             .visitArgumentList(_node.argumentList, nestExpression: false);
         visitor._visitor.builder.unnest();
 
-      case _PrefixedSelector(:var _node):
+      case _PrefixedSelector(_node):
         visitor._visitor.token(_node.period);
         visitor._visitor.visit(_node.identifier);
 
-      case _PropertySelector(:var _node):
+      case _PropertySelector(_node):
         visitor._visitor.token(_node.operator);
         visitor._visitor.visit(_node.propertyName);
     }
@@ -540,25 +539,25 @@ Expression _unwrapTarget(Expression node, List<_Selector> calls) {
     // Don't include things that look like static method or constructor
     // calls in the call chain because that tends to split up named
     // constructors from their class.
-    case _ if (node.looksLikeStaticCall) => node;
+    case _ when node.looksLikeStaticCall => node;
 
     // Selectors.
-    case MethodInvocation(:var target?) =>
+    case MethodInvocation(target?) =>
         _unwrapSelector(target, _MethodSelector(node), calls);
 
-    case PropertyAccess(:var target?) =>
+    case PropertyAccess(target?) =>
         _unwrapSelector(target, _PropertySelector(node), calls);
 
-    case PrefixedIdentifier(:var prefix) =>
+    case PrefixedIdentifier(prefix) =>
         _unwrapSelector(prefix, _PrefixedSelector(node), calls);
 
     // Postfix expressions.
-    case IndexExpression(:var target?) => _unwrapPostfix(node, target, calls);
+    case IndexExpression(target?) => _unwrapPostfix(node, target, calls);
 
-    case FunctionExpressionInvocation(:var function) =>
+    case FunctionExpressionInvocation(function) =>
         _unwrapPostfix(node, function, calls);
 
-    case PostfixExpression(operator: (type: TokenType.BANG)) =>
+    case PostfixExpression(operator: Token(type: TokenType.BANG)) =>
         _unwrapPostfix(node, node.operand, calls);
 
     // Otherwise, it isn't a selector so we're done.

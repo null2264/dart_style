@@ -65,7 +65,7 @@ class ArgumentListVisitor {
       Token leftParenthesis,
       Token rightParenthesis,
       List<Expression> arguments) {
-    if (_contiguousFunctions(arguments) case (var start, var end)?) {
+    if (var (start, end)? = _contiguousFunctions(arguments)) {
       // Split the arguments into two independent argument lists with the
       // functions in the middle.
       var argumentsBefore = arguments.take(start).toList();
@@ -228,32 +228,32 @@ class ArgumentListVisitor {
   static bool _isBlockFunction(Expression expression) {
     // This is pretty nice:
     switch (expression) {
-      case NamedExpression(:var expression):
+      case NamedExpression(expression):
         return _isBlockFunction(expression);
 
       // Allow functions wrapped in dotted method calls like "a.b.c(() { ... })".
-      case MethodInvocation(:var target, :var argumentList):
+      case MethodInvocation(target, argumentList):
         if (!_isValidWrappingTarget(target)) return false;
         if (argumentList.arguments.length != 1) return false;
         return _isBlockFunction(argumentList.arguments.single);
 
-      case InstanceCreationExpression(:var argumentList):
+      case InstanceCreationExpression(argumentList):
         if (argumentList.arguments.length != 1) return false;
         return _isBlockFunction(argumentList.arguments.single);
 
       // Allow immediately-invoked functions like "() { ... }()".
-      case FunctionExpressionInvocation(:var function, :var argumentList):
+      case FunctionExpressionInvocation(function, argumentList):
         if (argumentList.arguments.isNotEmpty) return false;
         return _isBlockFunction(function);
 
       // Unwrap parenthesized expressions.
-      case ParenthesizedExpression(:var expression)):
+      case ParenthesizedExpression(expression):
         return _isBlockFunction(expression);
 
       // Must be a function with a non-empty curly body.
-      case FunctionExpression(body: BlockFunctionBody(:var block))
-          if (block.statements.isNotEmpty ||
-              block.rightBracket.precedingComments != null):
+      case FunctionExpression(body: BlockFunctionBody(block))
+          when block.statements.isNotEmpty ||
+              block.rightBracket.precedingComments != null:
         return true;
 
       default:
@@ -269,10 +269,9 @@ class ArgumentListVisitor {
       case null => true;
 
       // Allow property accesses.
-      case PropertyAccess(:var target) => _isValidWrappingTarget(target);
+      case PropertyAccess(target) => _isValidWrappingTarget(target);
 
-      case PrefixedIdentifier() => true;
-      case SimpleIdentifier) => true;
+      case PrefixedIdentifier() | SimpleIdentifier() => true;
 
       default => false;
     }
@@ -329,7 +328,7 @@ class ArgumentSublist {
     var blocks = <Expression, Token>{};
     for (var argument in arguments) {
       // Not sure if this is really better:
-      if (_blockToken(argument) case var bracket?) blocks[argument] = bracket;
+      if (var bracket? = _blockToken(argument)) blocks[argument] = bracket;
     }
 
     // Count the leading arguments that are blocks.
@@ -438,12 +437,12 @@ class ArgumentSublist {
     var argumentBlock = _blocks[argument];
     // Not really an improvement.
     switch (argumentBlock) {
-      case var block?:
+      case block?:
         rule.disableSplitOnInnerRules();
 
         // Tell it to use the rule we've already created.
         visitor.beforeBlock(block, blockRule, previousSplit);
-      case _ if (_allArguments.length > 1):
+      case _ when _allArguments.length > 1:
         // Edge case: Only bump the nesting if there are multiple arguments. This
         // lets us avoid spurious indentation in cases like:
         //
@@ -451,7 +450,7 @@ class ArgumentSublist {
         //       body;
         //     }));
         visitor.builder.startBlockArgumentNesting();
-      case _ if (argument is! NamedExpression):
+      case _ when argument is! NamedExpression:
         // Edge case: Likewise, don't force the argument to split if there is
         // only a single positional one, like:
         //
@@ -517,21 +516,17 @@ class ArgumentSublist {
   /// Block-formatted arguments can get special indentation to make them look
   /// more statement-like.
   static Token? _blockToken(Expression expression) {
-    // Beautiful! Would be nice to have a way to have multiple cases share a
-    // body with switch expressions.
-    switch (expression) {
-      case NamedExpression(:var expression):
-        return _blockToken(expression);
+    // Beautiful!
+    return switch (expression) {
+      case NamedExpression(expression) => _blockToken(expression);
 
       // TODO(rnystrom): Should we step into parenthesized expressions?
-      case ListLiteral(leftBracket: var token):
-      case SetOrMapLiteral(leftBracket: var token):
-      case SingleStringLiteral(isMultiline: true, beginToken: var token):
-        return token;
+      case ListLiteral(leftBracket: token)
+         | SetOrMapLiteral(leftBracket: token)
+         | SingleStringLiteral(isMultiline: true, beginToken: token) => token;
 
-      default:
-        // Not a collection literal.
-        return null;
+      // Not a collection literal.
+      default => null;
     }
   }
 }

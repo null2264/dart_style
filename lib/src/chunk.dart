@@ -201,7 +201,7 @@ class Chunk extends Selection {
     if (!isBlock) return false;
 
     // Something like guard-let would be nice here.
-    if (block.argument case argument?) {
+    if (var argument? = block.argument) {
       var rule = argument.rule;
 
       // There may be no rule if the block occurs inside a string interpolation.

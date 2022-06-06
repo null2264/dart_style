@@ -122,13 +122,12 @@ void dumpChunks(int start, List<Chunk> chunks) {
       var spanBars = '';
       for (var span in spans) {
         spanBars += switch ((chunk.spans.contains(span),
-            index > 0 && chunks[index - 1].spans.contains(span),
-            span.cost)) {
-          case (true,  false, 1) => '╓';
-          case (true,  false, _) => span.cost.toString();
-          case (true,  true,  _) => '║';
-          case (false, true,  _) => '╙';
-          case (false, false, _) => ' ';
+            index > 0 && chunks[index - 1].spans.contains(span))) {
+          case (true,  false) when span.cost == 1 => '╓';
+          case (true,  false)                     => span.cost.toString();
+          case (true,  true)                      => '║';
+          case (false, true)                      => '╙';
+          case (false, false)                     => ' ';
         }
       }
       row.add(spanBars);
@@ -190,7 +189,7 @@ void dumpConstraints(List<Chunk> chunks) {
       for (var other in rules) {
         if (rule == other) continue;
 
-        if (rule.constrain(value, other) case var constraint?) {
+        if (var constraint? = rule.constrain(value, other)) {
           constraints.add('$other->$constraint');
         }
       }

@@ -99,7 +99,7 @@ class NestingBuilder {
     indent ??= Indent.expression;
 
     _pendingNesting = switch (_pendingNesting) {
-      case var nesting? => nesting.nest(indent);
+      case nesting? => nesting.nest(indent);
       default => _nesting.nest(indent);
     }
   }
@@ -107,7 +107,7 @@ class NestingBuilder {
   /// Discards the most recent level of expression nesting.
   void unnest() {
     _pendingNesting = switch (_pendingNesting) {
-      case var nesting? => nesting.parent;
+      case nesting? => nesting.parent;
       default => _nesting.parent;
     }
 
