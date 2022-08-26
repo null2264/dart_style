@@ -95,8 +95,8 @@ extension ExpressionExtensions on Expression {
 
       // If the target is a call with a trailing comma in the argument list,
       // treat it like a collection literal.
-      case InvocationExpression(argumentList)
-         | InstanceCreationExpression(argumentList) =>
+      case InvocationExpression(var argumentList)
+         | InstanceCreationExpression(var argumentList) =>
 
         // TODO(rnystrom): Do we want to allow an invocation where the last
         // argument is a collection literal? Like:
@@ -114,7 +114,7 @@ extension ExpressionExtensions on Expression {
   bool get isTrailingCommaArgument {
     return switch (this) {
       case NamedExpression named => named.isTrailingCommaArgument;
-      case ArgumentList(arguments) => arguments.hasCommaAfter;
+      case ArgumentList(var arguments) => arguments.hasCommaAfter;
       default => false;
     }
   }
@@ -147,7 +147,7 @@ extension ExpressionExtensions on Expression {
       // A prefixed unnamed constructor call:
       //
       //     prefix.Foo();
-      case MethodInvocation(SimpleIdentifier target, methodName)
+      case MethodInvocation(SimpleIdentifier target, var methodName)
           when _looksLikeClassName(methodName.name) => true;
 
       // A prefixed or unprefixed named constructor call:
@@ -157,7 +157,7 @@ extension ExpressionExtensions on Expression {
       case MethodInvocation(PrefixedIdentifier target) =>
           target.looksLikeStaticCall;
 
-      case SimpleIdentifier(name) when _looksLikeClassName(name) => true;
+      case SimpleIdentifier(var name) when _looksLikeClassName(name) => true;
 
       default => false;
     }

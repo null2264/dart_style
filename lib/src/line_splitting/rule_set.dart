@@ -89,7 +89,7 @@ class RuleSet {
           } else {
             onSplitRule(other);
           }
-        case (null, constraint?):
+        case (null, var constraint?):
           // Bind the other rule to its value and recursively propagate its
           // constraints.
           if (!tryBind(rules, other, constraint, onSplitRule)) return false;
@@ -98,13 +98,13 @@ class RuleSet {
           // that value.
         case (!= null, Rule.mustSplit): // Instead of `!= null`, could do `_?`.
           if (otherValue == Rule.unsplit) return false;
-        case (!= null, constraint?):
+        case (!= null, var constraint?):
           if (otherValue != constraint) return false;
         case (!= null, _):
           // See if the other rule's constraint allows us to use this value.
           switch (other.constrain(otherValue, rule)) {
             case Rule.mustSplit when value == Rule.unsplit:
-            case constraint? when value != constraint:
+            case var constraint? when value != constraint:
               return false;
             default:
           }

@@ -65,7 +65,7 @@ class ArgumentListVisitor {
       Token leftParenthesis,
       Token rightParenthesis,
       List<Expression> arguments) {
-    if (var (start, end)? = _contiguousFunctions(arguments)) {
+    if (_contiguousFunctions(arguments) is (var start, var end)?) {
       // Split the arguments into two independent argument lists with the
       // functions in the middle.
       var argumentsBefore = arguments.take(start).toList();
@@ -228,30 +228,30 @@ class ArgumentListVisitor {
   static bool _isBlockFunction(Expression expression) {
     // This is pretty nice:
     switch (expression) {
-      case NamedExpression(expression):
+      case NamedExpression(var expression):
         return _isBlockFunction(expression);
 
       // Allow functions wrapped in dotted method calls like "a.b.c(() { ... })".
-      case MethodInvocation(target, argumentList):
+      case MethodInvocation(var target, var argumentList):
         if (!_isValidWrappingTarget(target)) return false;
         if (argumentList.arguments.length != 1) return false;
         return _isBlockFunction(argumentList.arguments.single);
 
-      case InstanceCreationExpression(argumentList):
+      case InstanceCreationExpression(var argumentList):
         if (argumentList.arguments.length != 1) return false;
         return _isBlockFunction(argumentList.arguments.single);
 
       // Allow immediately-invoked functions like "() { ... }()".
-      case FunctionExpressionInvocation(function, argumentList):
+      case FunctionExpressionInvocation(var function, var argumentList):
         if (argumentList.arguments.isNotEmpty) return false;
         return _isBlockFunction(function);
 
       // Unwrap parenthesized expressions.
-      case ParenthesizedExpression(expression):
+      case ParenthesizedExpression(var expression):
         return _isBlockFunction(expression);
 
       // Must be a function with a non-empty curly body.
-      case FunctionExpression(body: BlockFunctionBody(block))
+      case FunctionExpression(body: BlockFunctionBody(var block))
           when block.statements.isNotEmpty ||
               block.rightBracket.precedingComments != null:
         return true;
@@ -269,7 +269,7 @@ class ArgumentListVisitor {
       case null => true;
 
       // Allow property accesses.
-      case PropertyAccess(target) => _isValidWrappingTarget(target);
+      case PropertyAccess(var target) => _isValidWrappingTarget(target);
 
       case PrefixedIdentifier() | SimpleIdentifier() => true;
 
@@ -328,7 +328,7 @@ class ArgumentSublist {
     var blocks = <Expression, Token>{};
     for (var argument in arguments) {
       // Not sure if this is really better:
-      if (var bracket? = _blockToken(argument)) blocks[argument] = bracket;
+      if (_blockToken(argument) is var bracket?) blocks[argument] = bracket;
     }
 
     // Count the leading arguments that are blocks.
@@ -437,7 +437,7 @@ class ArgumentSublist {
     var argumentBlock = _blocks[argument];
     // Not really an improvement.
     switch (argumentBlock) {
-      case block?:
+      case var block?:
         rule.disableSplitOnInnerRules();
 
         // Tell it to use the rule we've already created.
@@ -518,12 +518,12 @@ class ArgumentSublist {
   static Token? _blockToken(Expression expression) {
     // Beautiful!
     return switch (expression) {
-      case NamedExpression(expression) => _blockToken(expression);
+      case NamedExpression(var expression) => _blockToken(expression);
 
       // TODO(rnystrom): Should we step into parenthesized expressions?
-      case ListLiteral(leftBracket: token)
-         | SetOrMapLiteral(leftBracket: token)
-         | SingleStringLiteral(isMultiline: true, beginToken: token) => token;
+      case ListLiteral(leftBracket: var token)
+         | SetOrMapLiteral(leftBracket: var token)
+         | SingleStringLiteral(isMultiline: true, beginToken: var token) => token;
 
       // Not a collection literal.
       default => null;

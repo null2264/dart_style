@@ -164,7 +164,7 @@ class SourceVisitor extends ThrowingAstVisitor {
     var shouldNest = true;
 
     switch (node.parent) {
-      case ArgumentList(arguments):
+      case ArgumentList(var arguments):
         shouldNest = false;
 
         for (var argument in arguments) {
@@ -175,7 +175,7 @@ class SourceVisitor extends ThrowingAstVisitor {
           }
         }
 
-      case Assertion(condition, message):
+      case Assertion(var condition, var message):
         // Treat asserts like argument lists.
         shouldNest = false;
         if (condition != node && condition is StringLiteral) {
@@ -187,7 +187,7 @@ class SourceVisitor extends ThrowingAstVisitor {
         }
 
       case VariableDeclaration():
-      case AssignmentExpression(rightHandSide, parent)
+      case AssignmentExpression(var rightHandSide, var parent)
           when rightHandSide == node && parent is ExpressionStatement:
         // Don't add extra indentation in a variable initializer or assignment:
         //
@@ -3277,14 +3277,14 @@ class SourceVisitor extends ThrowingAstVisitor {
     //
     //     if (condition) {
     //     } else ...
-    if (node.parent case IfStatement ifStatement) {
+    if (node.parent is IfStatement ifStatement) {
       return ifStatement.elseStatement != null &&
           ifStatement.thenStatement == node;
     }
 
     // Force a split in an empty catch if there is a finally or other catch
     // after it:
-    if (node.parent case CatchClause(parent: TryStatement tryStatement)) {
+    if (node.parent is CatchClause(parent: TryStatement tryStatement)) {
       // Split the catch if there is something after it, a finally or another
       // catch.
       return tryStatement.finallyBlock != null ||
@@ -3435,7 +3435,7 @@ class SourceVisitor extends ThrowingAstVisitor {
   /// If [keyword] is `const`, begins a new constant context.
   void _startPossibleConstContext(Token? keyword) {
     // Probably trying too hard.
-    if (var Token(keyword: Keyword.CONST)? = keyword) {
+    if (keyword is var Token(keyword: Keyword.CONST)?) {
       _constNesting++;
     }
   }
@@ -3857,7 +3857,8 @@ class SourceVisitor extends ThrowingAstVisitor {
       // Stop if we hit anything other than space, tab, newline or carriage
       // return.
       var char = _source.text.codeUnitAt(end - 1);
-      if (char != 0x20 && char != 0x09 && char != 0x0a && char != 0x0d) {
+      // Weird idea: Can you have a pattern after "is!"?
+      if (char is! 0x20 | 0x09 | 0x0a | 0x0d) {
         break;
       }
 

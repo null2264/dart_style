@@ -66,7 +66,7 @@ class FormatCommand extends Command<int> {
     // If the user wants to print the code and didn't indicate how the files
     // should be printed, default to only showing the code.
     if (!argResults.wasParsed('show') &&
-        (output == Output.show || output == Output.json)) {
+        (output is Output.show | Output.json)) {
       show = Show.none;
     }
 

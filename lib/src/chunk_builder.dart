@@ -383,7 +383,7 @@ class ChunkBuilder {
 
       // Remove any leading "*" from the middle lines.
       if (i > 0 && i < lines.length - 1) {
-        if (_javaDocLine.firstMatch(line) case var match?) {
+        if (_javaDocLine.firstMatch(line) is var match?) {
           line = match[1]!;
         }
       }

@@ -189,7 +189,7 @@ void dumpConstraints(List<Chunk> chunks) {
       for (var other in rules) {
         if (rule == other) continue;
 
-        if (var constraint? = rule.constrain(value, other)) {
+        if (rule.constrain(value, other) is var constraint?) {
           constraints.add('$other->$constraint');
         }
       }

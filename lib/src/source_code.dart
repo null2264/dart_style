@@ -63,16 +63,16 @@ class SourceCode {
         throw ArgumentError(
             'If selectionStart is provided, selectionLength must be too.');
 
-      case (start?, _) when start < 0:
+      case (var start?, _) when start < 0:
         throw ArgumentError('selectionStart must be non-negative.');
 
-      case (start?, _) when start > text.length:
+      case (var start?, _) when start > text.length:
         throw ArgumentError('selectionStart must be within text.');
 
-      case (_, length?) when length < 0:
+      case (_, var length?) when length < 0:
         throw ArgumentError('selectionLength must be non-negative.');
 
-      case (start?, length?) when start + length > text.length:
+      case (var start?, var length?) when start + length > text.length:
         throw ArgumentError('selectionLength must end within text.');
     }
   }

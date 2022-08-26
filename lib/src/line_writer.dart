@@ -192,8 +192,8 @@ class LineWriter {
   /// Writes [chunk] to the output and updates the selection if the chunk
   /// contains a selection marker.
   void _writeChunk(Chunk chunk) {
-    if (var start? = chunk.selectionStart) _selectionStart = length + start;
-    if (var end? = chunk.selectionEnd) _selectionEnd = length + end;
+    if (chunk.selectionStart is var start?) _selectionStart = length + start;
+    if (chunk.selectionEnd is var end?) _selectionEnd = length + end;
 
     _buffer.write(chunk.text);
   }
