@@ -1,3 +1,7 @@
+This fork main goal is to de-opinionate dartfmt
+
+---
+
 The dart_style package defines an automatic, opinionated formatter for Dart
 code. It replaces the whitespace in your program with what it deems to be the
 best formatting for it. Resulting code should follow the [Dart style guide][]
