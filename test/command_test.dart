@@ -286,7 +286,6 @@ void main() {
       expect(
           await process.stdout.next, 'Idiomatically format Dart source code.');
       await expectLater(process.stdout, emitsThrough(contains('-o, --output')));
-      await expectLater(process.stdout, emitsThrough(contains('--fix')));
       await expectLater(process.stdout, neverEmits(contains('--summary')));
       await process.shouldExit(0);
     });
@@ -452,6 +451,31 @@ void main() {
     test('errors if given path', () async {
       var process = await runCommand(['--stdin-name=name', 'path']);
       await process.shouldExit(64);
+    });
+  });
+
+  group('--enable-experiment', () {
+    test('passes experiment flags to parser', () async {
+      var process =
+          await runCommand(['--enable-experiment=test-experiment,variance']);
+      process.stdin.writeln('class Writer<in T> {}');
+      await process.stdin.close();
+
+      // The formatter doesn't actually support formatting variance annotations,
+      // but we want to test that the experiment flags are passed all the way
+      // to the parser, so just test that it parses the variance annotation
+      // without errors and then fails to format.
+      expect(await process.stderr.next,
+          'Hit a bug in the formatter when formatting stdin.');
+      expect(await process.stderr.next,
+          'Please report at: github.com/dart-lang/dart_style/issues');
+      expect(await process.stderr.next,
+          'The formatter produced unexpected output. Input was:');
+      expect(await process.stderr.next, 'class Writer<in T> {}');
+      expect(await process.stderr.next, '');
+      expect(await process.stderr.next, 'Which formatted to:');
+      expect(await process.stderr.next, 'class Writer<T> {}');
+      await process.shouldExit(70);
     });
   });
 

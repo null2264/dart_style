@@ -2,6 +2,15 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
+/// The in-progress "tall" formatting style is enabled by passing an experiment
+/// flag with this name.
+///
+/// Note that this isn't a real Dart SDK experiment: Only the formatter supports
+/// it. We use the [experimentFlags] API to pass this in so that support for it
+/// can be removed in a later version without it being a breaking change to the
+/// dart_style library API.
+const tallStyleExperimentFlag = 'tall-style';
+
 /// Constants for the cost heuristics used to determine which set of splits is
 /// most desirable.
 class Cost {
@@ -56,6 +65,9 @@ class Cost {
 
 /// Constants for the number of spaces for various kinds of indentation.
 class Indent {
+  /// Reset back to no indentation.
+  static const none = 0;
+
   /// The number of spaces in a block or collection body.
   static const block = 4;
 
@@ -66,5 +78,25 @@ class Indent {
   static const expression = 8;
 
   /// The ":" on a wrapped constructor initialization list.
-  static const constructorInitializer = 8;
+  static const constructorInitializer = 4;
+
+  /// A wrapped constructor initializer after the first one when the parameter
+  /// list does not have optional or named parameters, like:
+  ///
+  ///     Constructor(
+  ///       parameter,
+  ///     ) : first,
+  ///         second;
+  ///       ^^ This indentation.
+  static const initializer = 2;
+
+  /// A wrapped constructor initializer after the first one when the parameter
+  /// list has optional or named parameters, like:
+  ///
+  ///     Constructor([
+  ///       parameter,
+  ///     ]) : first,
+  ///          second;
+  ///       ^^^ This indentation.
+  static const initializerWithOptionalParameter = 3;
 }

@@ -4,14 +4,14 @@
 
 import 'dart:io';
 
+import '../short/style_fix.dart';
 import '../source_code.dart';
-import '../style_fix.dart';
 import 'output.dart';
 import 'show.dart';
 import 'summary.dart';
 
 // Note: The following line of code is modified by tool/grind.dart.
-const dartStyleVersion = '2.2.5-dev';
+const dartStyleVersion = '2.3.6';
 
 /// Global options that affect how the formatter produces and uses its outputs.
 class FormatterOptions {
@@ -39,6 +39,11 @@ class FormatterOptions {
   /// Sets the exit code to 1 if any changes are made.
   final bool setExitIfChanged;
 
+  /// Flags to enable experimental language features.
+  ///
+  /// See dart.dev/go/experiments for details.
+  final List<String> experimentFlags;
+
   FormatterOptions(
       {this.indent = 0,
       this.pageWidth = 80,
@@ -47,8 +52,10 @@ class FormatterOptions {
       this.show = Show.changed,
       this.output = Output.write,
       this.summary = Summary.none,
-      this.setExitIfChanged = false})
-      : fixes = [...?fixes];
+      this.setExitIfChanged = false,
+      List<String>? experimentFlags})
+      : fixes = [...?fixes],
+        experimentFlags = [...?experimentFlags];
 
   /// Called when [file] is about to be formatted.
   ///

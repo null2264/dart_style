@@ -25,11 +25,12 @@ Future<void> formatStdin(
 
   var completer = Completer<void>();
   var input = StringBuffer();
-  stdin.transform(Utf8Decoder()).listen(input.write, onDone: () {
+  stdin.transform(const Utf8Decoder()).listen(input.write, onDone: () {
     var formatter = DartFormatter(
         indent: options.indent,
         pageWidth: options.pageWidth,
-        fixes: options.fixes);
+        fixes: options.fixes,
+        experimentFlags: options.experimentFlags);
     try {
       options.beforeFile(null, name);
       var source = SourceCode(input.toString(),
@@ -138,7 +139,8 @@ bool processFile(FormatterOptions options, File file, {String? displayPath}) {
   var formatter = DartFormatter(
       indent: options.indent,
       pageWidth: options.pageWidth,
-      fixes: options.fixes);
+      fixes: options.fixes,
+      experimentFlags: options.experimentFlags);
   try {
     var source = SourceCode(file.readAsStringSync(), uri: file.path);
     options.beforeFile(file, displayPath);

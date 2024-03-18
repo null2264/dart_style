@@ -4,7 +4,24 @@
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/token.dart';
 
+import 'piece/list.dart';
+
 extension AstNodeExtensions on AstNode {
+  /// The first token at the beginning of this AST node, not including any
+  /// tokens for leading doc comments.
+  ///
+  /// If [node] is an [AnnotatedNode], then [beginToken] includes the
+  /// leading doc comment, which we want to handle separately. So, in that
+  /// case, explicitly skip past the doc comment to the subsequent metadata
+  /// (if there is any), or the beginning of the code.
+  Token get firstNonCommentToken {
+    return switch (this) {
+      AnnotatedNode(metadata: [var annotation, ...]) => annotation.beginToken,
+      AnnotatedNode(firstTokenAfterCommentAndMetadata: var token) => token,
+      _ => beginToken
+    };
+  }
+
   /// The comma token immediately following this if there is one, or `null`.
   Token? get commaAfter {
     var next = endToken.next!;
@@ -33,10 +50,16 @@ extension AstNodeExtensions on AstNode {
       body = node.body;
     } else if (node is FunctionDeclarationStatement) {
       body = node.functionDeclaration.functionExpression.body;
+    } else if (node is FunctionDeclaration) {
+      body = node.functionExpression.body;
     }
 
     return body is BlockFunctionBody && body.block.statements.isNotEmpty;
   }
+
+  /// Whether this node is a bracket-delimited collection literal.
+  bool get isCollectionLiteral =>
+      this is ListLiteral || this is RecordLiteral || this is SetOrMapLiteral;
 
   bool get isControlFlowElement => this is IfElement || this is ForElement;
 
@@ -60,11 +83,11 @@ extension AstNodeExtensions on AstNode {
     if (node is SpreadElement) {
       var expression = node.expression;
       if (expression is ListLiteral) {
-        if (!expression.elements.isEmptyBody(expression.rightBracket)) {
+        if (expression.elements.canSplit(expression.rightBracket)) {
           return expression.leftBracket;
         }
       } else if (expression is SetOrMapLiteral) {
-        if (!expression.elements.isEmptyBody(expression.rightBracket)) {
+        if (expression.elements.canSplit(expression.rightBracket)) {
           return expression.leftBracket;
         }
       }
@@ -72,54 +95,130 @@ extension AstNodeExtensions on AstNode {
 
     return null;
   }
+
+  /// If this is a spread of a non-empty collection literal, then returns `this`
+  /// as a [SpreadElement].
+  ///
+  /// Otherwise, returns `null`.
+  SpreadElement? get spreadCollection {
+    var node = this;
+    if (node is! SpreadElement) return null;
+
+    return switch (node.expression) {
+      ListLiteral(:var elements, :var rightBracket) ||
+      SetOrMapLiteral(:var elements, :var rightBracket)
+          when elements.canSplit(rightBracket) =>
+        node,
+      _ => null,
+    };
+  }
 }
 
 extension AstIterableExtensions on Iterable<AstNode> {
   /// Whether there is a comma token immediately following this.
   bool get hasCommaAfter => isNotEmpty && last.hasCommaAfter;
 
-  /// Whether the collection literal or block containing these nodes and
-  /// terminated by [rightBracket] is empty or not.
+  /// Whether the delimited construct containing these nodes and terminated by
+  /// [rightBracket] can have a split inside it.
   ///
-  /// An empty collection must have no elements or comments inside. Collections
-  /// like that are treated specially because they cannot be split inside.
-  bool isEmptyBody(Token rightBracket) =>
-      isEmpty && rightBracket.precedingComments == null;
+  /// We disallow splitting for entirely empty delimited constructs like `[]`,
+  /// but allow a split if there are elements or comments inside.
+  bool canSplit(Token rightBracket) =>
+      isNotEmpty || rightBracket.precedingComments != null;
+
+  /// Returns `true` if the collection containing these elements and terminated
+  /// by [rightBracket] contains any line comments before, between, or after
+  /// any elements.
+  ///
+  /// Comments within an element are ignored.
+  bool containsLineComments([Token? rightBracket]) =>
+      any((element) => element.beginToken.hasLineCommentBefore) ||
+      (rightBracket?.hasLineCommentBefore ?? false);
 }
 
 extension ExpressionExtensions on Expression {
-  /// Whether [expression] is a collection literal, or a call with a trailing
-  /// comma in an argument list.
+  /// Whether this expression is a non-empty delimited container for inner
+  /// expressions that allows "block-like" formatting in some contexts. For
+  /// example, in an assignment, a split in the assigned value is usually
+  /// indented:
   ///
-  /// In that case, when the expression is a target of a cascade, we don't
-  /// force a split before the ".." as eagerly to avoid ugly results like:
+  ///     var variableName =
+  ///         longValue;
   ///
-  ///     [
-  ///       1,
-  ///       2,
-  ///     ]..addAll(numbers);
-  bool get isCollectionLike {
-    var expression = this;
-    if (expression is ListLiteral) return false;
-    if (expression is SetOrMapLiteral) return false;
+  /// But if the initializer is block-like, we don't split at the `=`:
+  ///
+  ///     var variableName = [
+  ///       element,
+  ///     ];
+  ///
+  /// Likewise, in an argument list, block-like expressions can avoid splitting
+  /// the surrounding argument list:
+  ///
+  ///     function([
+  ///       element,
+  ///     ]);
+  ///
+  /// Completely empty delimited constructs like `[]` and `foo()` don't allow
+  /// splitting inside them, so are not considered block-like.
+  bool get canBlockSplit => blockFormatType != BlockFormat.none;
 
-    // If the target is a call with a trailing comma in the argument list,
-    // treat it like a collection literal.
-    ArgumentList? arguments;
-    if (expression is InvocationExpression) {
-      arguments = expression.argumentList;
-    } else if (expression is InstanceCreationExpression) {
-      arguments = expression.argumentList;
-    }
+  /// When this expression is in an argument list, what kind of block formatting
+  /// category it belongs to.
+  BlockFormat get blockFormatType {
+    return switch (this) {
+      // Unwrap named expressions to get the real expression inside.
+      NamedExpression(:var expression) => expression.blockFormatType,
 
-    // TODO(rnystrom): Do we want to allow an invocation where the last
-    // argument is a collection literal? Like:
-    //
-    //     foo(argument, [
-    //       element
-    //     ])..cascade();
+      // Allow the target of a single-section cascade to be block formatted.
+      CascadeExpression(:var target, :var cascadeSections)
+          when cascadeSections.length == 1 && target.canBlockSplit =>
+        BlockFormat.invocation,
 
-    return arguments == null || !arguments.arguments.hasCommaAfter;
+      // A function expression with a non-empty block body can block format.
+      FunctionExpression(:var body)
+          when body is BlockFunctionBody &&
+              body.block.statements.canSplit(body.block.rightBracket) =>
+        BlockFormat.function,
+
+      // An immediately invoked function expression is formatted like a
+      // function expression.
+      FunctionExpressionInvocation(:FunctionExpression function)
+          when function.blockFormatType == BlockFormat.function =>
+        BlockFormat.function,
+
+      // Non-empty collection literals can block split.
+      ListLiteral(:var elements, :var rightBracket) ||
+      SetOrMapLiteral(:var elements, :var rightBracket)
+          when elements.canSplit(rightBracket) =>
+        BlockFormat.collection,
+      RecordLiteral(:var fields, :var rightParenthesis)
+          when fields.canSplit(rightParenthesis) =>
+        BlockFormat.collection,
+      SwitchExpression(:var cases, :var rightBracket)
+          when cases.canSplit(rightBracket) =>
+        BlockFormat.collection,
+
+      // Function calls can block split if their argument lists can.
+      InstanceCreationExpression(:var argumentList) ||
+      MethodInvocation(:var argumentList)
+          when argumentList.arguments.canSplit(argumentList.rightParenthesis) =>
+        BlockFormat.invocation,
+
+      // Note: Using a separate case instead of `||` for this type because
+      // Dart 3.0 reports an error that [argumentList] has a different type
+      // here than in the previous two clauses.
+      FunctionExpressionInvocation(:var argumentList)
+          when argumentList.arguments.canSplit(argumentList.rightParenthesis) =>
+        BlockFormat.invocation,
+
+      // Multi-line strings can.
+      StringInterpolation(isMultiline: true) => BlockFormat.collection,
+      SimpleStringLiteral(isMultiline: true) => BlockFormat.collection,
+
+      // Parenthesized expressions unwrap the inner expression.
+      ParenthesizedExpression(:var expression) => expression.blockFormatType,
+      _ => BlockFormat.none,
+    };
   }
 
   /// Whether this is an argument in an argument list with a trailing comma.
@@ -220,24 +319,113 @@ extension ExpressionExtensions on Expression {
 }
 
 extension CascadeExpressionExtensions on CascadeExpression {
-  /// Whether a cascade should be allowed to be inline as opposed to moving the
-  /// section to the next line.
-  bool get allowInline {
-    // Cascades with multiple sections are handled elsewhere and are never
-    // inline.
-    assert(cascadeSections.length == 1);
+  /// Whether a cascade should be allowed to be inline with the target as
+  /// opposed to moving the sections to the next line.
+  bool get allowInline => switch (target) {
+        // Cascades with multiple sections always split.
+        _ when cascadeSections.length > 1 => false,
 
-    // If the receiver is an expression that makes the cascade's very low
-    // precedence confusing, force it to split. For example:
-    //
-    //     a ? b : c..d();
-    //
-    // Here, the cascade is applied to the result of the conditional, not "c".
-    if (target is ConditionalExpression) return false;
-    if (target is BinaryExpression) return false;
-    if (target is PrefixExpression) return false;
-    if (target is AwaitExpression) return false;
+        // If the receiver is an expression that makes the cascade's very low
+        // precedence confusing, force it to split. For example:
+        //
+        //     a ? b : c..d();
+        //
+        // Here, the cascade is applied to the result of the conditional, not
+        // just "c".
+        ConditionalExpression() => false,
+        BinaryExpression() => false,
+        PrefixExpression() => false,
+        AwaitExpression() => false,
 
-    return true;
+        // Otherwise, the target doesn't force a split.
+        _ => true,
+      };
+}
+
+extension AdjacentStringsExtensions on AdjacentStrings {
+  /// Whether subsequent strings should be indented relative to the first
+  /// string.
+  ///
+  /// We generally want to indent adjacent strings because it can be confusing
+  /// otherwise when they appear in a list of expressions, like:
+  ///
+  ///     [
+  ///       "one",
+  ///       "two"
+  ///       "three",
+  ///       "four"
+  ///     ]
+  ///
+  /// Especially when these strings are longer, it can be hard to tell that
+  /// "three" is a continuation of the previous element.
+  ///
+  /// However, the indentation is distracting in places that don't suffer from
+  /// this ambiguity:
+  ///
+  ///     var description =
+  ///         "A very long description..."
+  ///             "this extra indentation is unnecessary.");
+  ///
+  /// To balance these, we omit the indentation when an adjacent string
+  /// expression is in a context where it's unlikely to be confusing.
+  bool get indentStrings {
+    bool hasOtherStringArgument(List<Expression> arguments) => arguments
+        .any((argument) => argument != this && argument is StringLiteral);
+
+    return switch (parent) {
+      ArgumentList(:var arguments) => hasOtherStringArgument(arguments),
+
+      // Treat asserts like argument lists.
+      Assertion(:var condition, :var message) =>
+        hasOtherStringArgument([condition, if (message != null) message]),
+
+      // Don't add extra indentation in a variable initializer or assignment:
+      //
+      //     var variable =
+      //         "no extra"
+      //         "indent";
+      VariableDeclaration() => false,
+      AssignmentExpression(:var rightHandSide) when rightHandSide == this =>
+        false,
+
+      // Don't indent when following `:`.
+      MapLiteralEntry(:var value) when value == this => false,
+      NamedExpression() => false,
+
+      // Don't indent when the body of a `=>` function.
+      ExpressionFunctionBody() => false,
+      _ => true,
+    };
+  }
+}
+
+extension PatternExtensions on DartPattern {
+  /// Whether this expression is a non-empty delimited container for inner
+  /// expressions that allows "block-like" formatting in some contexts.
+  ///
+  /// See [ExpressionExtensions.canBlockSplit].
+  bool get canBlockSplit => switch (this) {
+        ConstantPattern(:var expression) => expression.canBlockSplit,
+        ListPattern(:var elements, :var rightBracket) =>
+          elements.canSplit(rightBracket),
+        MapPattern(:var elements, :var rightBracket) =>
+          elements.canSplit(rightBracket),
+        ObjectPattern(:var fields, :var rightParenthesis) ||
+        RecordPattern(:var fields, :var rightParenthesis) =>
+          fields.canSplit(rightParenthesis),
+        _ => false,
+      };
+}
+
+extension TokenExtensions on Token {
+  /// Whether this token has a preceding comment that is a line comment.
+  bool get hasLineCommentBefore {
+    for (Token? comment = precedingComments;
+        comment != null;
+        comment = comment.next) {
+      if (comment.type == TokenType.SINGLE_LINE_COMMENT) return true;
+    }
+
+    return false;
   }
 }

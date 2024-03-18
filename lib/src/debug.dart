@@ -3,10 +3,13 @@
 // BSD-style license that can be found in the LICENSE file.
 
 /// Internal debugging utilities.
+library;
+
 import 'dart:math' as math;
 
-import 'chunk.dart';
-import 'line_splitting/rule_set.dart';
+import 'piece/piece.dart';
+import 'short/chunk.dart';
+import 'short/line_splitting/rule_set.dart';
 
 /// Set this to `true` to turn on diagnostic output while building chunks.
 bool traceChunkBuilder = false;
@@ -16,6 +19,12 @@ bool traceLineWriter = false;
 
 /// Set this to `true` to turn on diagnostic output while line splitting.
 bool traceSplitter = false;
+
+/// Set this to `true` to turn on diagnostic output while building pieces.
+bool tracePieceBuilder = false;
+
+/// Set this to `true` to turn on diagnostic output while solving pieces.
+bool traceSolver = false;
 
 bool useAnsiColors = false;
 
@@ -40,7 +49,7 @@ final _none = _color('\u001b[0m');
 final _bold = _color('\u001b[1m');
 
 /// Prints [message] to stdout with each line correctly indented.
-void log([message]) {
+void log([Object? message]) {
   if (message == null) {
     print('');
     return;
@@ -50,13 +59,13 @@ void log([message]) {
 }
 
 /// Wraps [message] in gray ANSI escape codes if enabled.
-String gray(message) => '$_gray$message$_none';
+String gray(Object message) => '$_gray$message$_none';
 
 /// Wraps [message] in green ANSI escape codes if enabled.
-String green(message) => '$_green$message$_none';
+String green(Object message) => '$_green$message$_none';
 
 /// Wraps [message] in bold ANSI escape codes if enabled.
-String bold(message) => '$_bold$message$_none';
+String bold(Object message) => '$_bold$message$_none';
 
 /// Prints [chunks] to stdout, one chunk per line, with detailed information
 /// about each chunk.
@@ -76,9 +85,6 @@ void dumpChunks(int start, List<Chunk> chunks) {
 
   addSpans(chunks);
 
-  var spans = spanSet.toList();
-  var rules = chunks.map((chunk) => chunk.rule).toSet();
-
   var rows = <List<String>>[];
 
   void addChunk(List<Chunk> chunks, String prefix, int index) {
@@ -93,7 +99,7 @@ void dumpChunks(int start, List<Chunk> chunks) {
     var row = <String>[];
     row.add('$prefix$index:');
 
-    void writeIf(predicate, String Function() callback) {
+    void writeIf(bool predicate, String Function() callback) {
       if (predicate) {
         row.add(callback());
       } else {
@@ -108,6 +114,7 @@ void dumpChunks(int start, List<Chunk> chunks) {
     if (rule.isHardened) ruleString += '!';
     row.add(ruleString);
 
+    var rules = chunks.map((chunk) => chunk.rule).toSet();
     var constrainedRules = rule.constrainedRules.toSet().intersection(rules);
     writeIf(
         constrainedRules.isNotEmpty, () => "-> ${constrainedRules.join(" ")}");
@@ -123,29 +130,35 @@ void dumpChunks(int start, List<Chunk> chunks) {
     writeIf(chunk.indent != 0, () => 'indent ${chunk.indent}');
     writeIf(chunk.nesting.indent != 0, () => 'nest ${chunk.nesting}');
 
+    var spans = spanSet.toList();
     if (spans.length <= 20) {
       var spanBars = '';
       for (var span in spans) {
         if (chunk.spans.contains(span)) {
-          if (index == 0 || !chunks[index - 1].spans.contains(span)) {
+          if (index == chunks.length - 1 ||
+              !chunks[index + 1].spans.contains(span)) {
+            // This is the last chunk with the span.
+            spanBars += '╙';
+          } else {
+            spanBars += '║';
+          }
+        } else {
+          // If the next chunk has this span, then show it bridging this chunk
+          // and the next because a split between them breaks the span.
+          if (index < chunks.length - 1 &&
+              chunks[index + 1].spans.contains(span)) {
             if (span.cost == 1) {
               spanBars += '╓';
             } else {
               spanBars += span.cost.toString();
             }
-          } else {
-            spanBars += '║';
-          }
-        } else {
-          if (index > 0 && chunks[index - 1].spans.contains(span)) {
-            spanBars += '╙';
-          } else {
-            spanBars += ' ';
           }
         }
       }
       row.add(spanBars);
     }
+
+    row.add(chunk.spans.map((span) => span.id).join(' '));
 
     if (chunk.text.length > 70) {
       row.add(chunk.text.substring(0, 70));
@@ -250,6 +263,78 @@ void dumpLines(List<Chunk> chunks, SplitSet splits) {
   }
 
   log(buffer);
+}
+
+/// Build a string representation of the [piece] tree.
+String pieceTree(Piece piece) {
+  var buffer = StringBuffer();
+  _PieceDebugTree(piece).write(buffer, 0);
+  return buffer.toString();
+}
+
+/// A stringified representation of a tree of pieces for debug output.
+class _PieceDebugTree {
+  final String label;
+  final List<_PieceDebugTree> children = [];
+
+  _PieceDebugTree(Piece piece) : label = piece.toString() {
+    piece.forEachChild((child) {
+      children.add(_PieceDebugTree(child));
+    });
+  }
+
+  /// The approximate number of characters of output needed to print this tree
+  /// on a single line.
+  ///
+  /// Used to determine when to show a tree's children inline or split. Note
+  /// that this is O(n^2), but we don't really care since it's only used for
+  /// debug output.
+  int get width {
+    var result = label.length;
+    for (var child in children) {
+      result += child.width;
+    }
+    return result;
+  }
+
+  void write(StringBuffer buffer, int indent) {
+    buffer.write(label);
+    if (children.isEmpty) return;
+
+    buffer.write('(');
+
+    // Split the tree if it is too long.
+    var isSplit = indent * 2 + width > 80;
+    if (isSplit) {
+      indent++;
+      buffer.writeln();
+      buffer.write('  ' * indent);
+    }
+
+    var first = true;
+    for (var child in children) {
+      if (!first) {
+        if (isSplit) {
+          buffer.writeln();
+          buffer.write('  ' * indent);
+        } else {
+          buffer.write(' ');
+        }
+      }
+
+      child.write(buffer, indent);
+
+      first = false;
+    }
+
+    if (isSplit) {
+      indent--;
+      buffer.writeln();
+      buffer.write('  ' * indent);
+    }
+
+    buffer.write(')');
+  }
 }
 
 String _color(String ansiEscape) => useAnsiColors ? ansiEscape : '';

@@ -4,6 +4,7 @@
 import 'dart:math' as math;
 
 import 'package:analyzer/dart/analysis/features.dart';
+import 'package:analyzer/dart/analysis/results.dart';
 import 'package:analyzer/dart/analysis/utilities.dart';
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/token.dart';
@@ -14,11 +15,13 @@ import 'package:analyzer/src/dart/scanner/scanner.dart';
 import 'package:analyzer/src/string_source.dart';
 import 'package:pub_semver/pub_semver.dart';
 
+import 'constants.dart';
 import 'exceptions.dart';
+import 'front_end/ast_node_visitor.dart';
+import 'short/source_visitor.dart';
+import 'short/style_fix.dart';
 import 'source_code.dart';
-import 'source_visitor.dart';
 import 'string_compare.dart' as string_compare;
-import 'style_fix.dart';
 
 /// Dart source code formatter.
 class DartFormatter {
@@ -37,6 +40,11 @@ class DartFormatter {
 
   final Set<StyleFix> fixes;
 
+  /// Flags to enable experimental language features.
+  ///
+  /// See dart.dev/go/experiments for details.
+  final List<String> experimentFlags;
+
   /// Creates a new formatter for Dart code.
   ///
   /// If [lineEnding] is given, that will be used for any newlines in the
@@ -48,17 +56,22 @@ class DartFormatter {
   ///
   /// While formatting, also applies any of the given [fixes].
   DartFormatter(
-      {this.lineEnding, int? pageWidth, int? indent, Iterable<StyleFix>? fixes})
+      {this.lineEnding,
+      int? pageWidth,
+      int? indent,
+      Iterable<StyleFix>? fixes,
+      List<String>? experimentFlags})
       : pageWidth = pageWidth ?? 80,
         indent = indent ?? 0,
-        fixes = {...?fixes};
+        fixes = {...?fixes},
+        experimentFlags = [...?experimentFlags];
 
   /// Formats the given [source] string containing an entire Dart compilation
   /// unit.
   ///
   /// If [uri] is given, it is a [String] or [Uri] used to identify the file
   /// being formatted in error messages.
-  String format(String source, {uri}) {
+  String format(String source, {Object? uri}) {
     if (uri == null) {
       // Do nothing.
     } else if (uri is Uri) {
@@ -69,7 +82,8 @@ class DartFormatter {
       throw ArgumentError('uri must be `null`, a Uri, or a String.');
     }
 
-    return formatSource(SourceCode(source, uri: uri, isCompilationUnit: true))
+    return formatSource(
+            SourceCode(source, uri: uri as String?, isCompilationUnit: true))
         .text;
   }
 
@@ -83,20 +97,11 @@ class DartFormatter {
   /// Returns a new [SourceCode] containing the formatted code and the resulting
   /// selection, if any.
   SourceCode formatSource(SourceCode source) {
-    // Enable all features that are enabled by default in the current analyzer
-    // version.
-    // TODO(paulberry): consider plumbing in experiment enable flags from the
-    // command line.
-    var featureSet = FeatureSet.fromEnableFlags2(
-      sdkLanguageVersion: Version(2, 19, 0),
-      flags: [
-        'unnamed-libraries',
-      ],
-    );
-
     var inputOffset = 0;
     var text = source.text;
     var unitSourceCode = source;
+
+    // If we're parsing a single statement, wrap the source in a fake function.
     if (!source.isCompilationUnit) {
       var prefix = 'void foo() { ';
       inputOffset = prefix.length;
@@ -113,12 +118,19 @@ class DartFormatter {
     }
 
     // Parse it.
-    var parseResult = parseString(
-      content: text,
-      featureSet: featureSet,
-      path: source.uri,
-      throwIfDiagnostics: false,
-    );
+    var parseResult = _parse(text, source.uri, patterns: true);
+
+    // If we couldn't parse it with patterns enabled, it may be because of
+    // one of the breaking syntax changes to switch cases. Try parsing it
+    // again without patterns.
+    if (parseResult.errors.isNotEmpty) {
+      var withoutPatternsResult = _parse(text, source.uri, patterns: false);
+
+      // If we succeeded this time, use this parse instead.
+      if (withoutPatternsResult.errors.isEmpty) {
+        parseResult = withoutPatternsResult;
+      }
+    }
 
     // Infer the line ending if not given one. Do it here since now we know
     // where the lines start.
@@ -154,21 +166,27 @@ class DartFormatter {
       var token = node.endToken.next!;
       if (token.type != TokenType.CLOSE_CURLY_BRACKET) {
         var stringSource = StringSource(text, source.uri);
-        var error = AnalysisError(
-            stringSource,
-            token.offset - inputOffset,
-            math.max(token.length, 1),
-            ParserErrorCode.UNEXPECTED_TOKEN,
-            [token.lexeme]);
-
+        var error = AnalysisError.tmp(
+            source: stringSource,
+            offset: token.offset - inputOffset,
+            length: math.max(token.length, 1),
+            errorCode: ParserErrorCode.UNEXPECTED_TOKEN,
+            arguments: [token.lexeme]);
         throw FormatterException([error]);
       }
     }
 
     // Format it.
     var lineInfo = parseResult.lineInfo;
-    var visitor = SourceVisitor(this, lineInfo, unitSourceCode);
-    var output = visitor.run(node);
+
+    SourceCode output;
+    if (experimentFlags.contains(tallStyleExperimentFlag)) {
+      var visitor = AstNodeVisitor(this, lineInfo, unitSourceCode);
+      output = visitor.run(node);
+    } else {
+      var visitor = SourceVisitor(this, lineInfo, unitSourceCode);
+      output = visitor.run(node);
+    }
 
     // Sanity check that only whitespace was changed if that's all we expect.
     if (fixes.isEmpty &&
@@ -177,5 +195,45 @@ class DartFormatter {
     }
 
     return output;
+  }
+
+  /// Parse [source] from [uri].
+  ///
+  /// If [patterns] is `true`, the parse at the latest language version
+  /// which supports patterns and treats switch cases as patterns. If `false`,
+  /// then parses using an older language version where switch cases are
+  /// constant expressions.
+  ///
+  // TODO(rnystrom): This is a pretty big hack. Up until now, every language
+  // version was a strict syntactic superset of all previous versions. That let
+  // the formatter parse every file at the latest language version without
+  // having to detect each file's actual version, which requires digging around
+  // in the file system for package configs and looking for "@dart" comments in
+  // files. It also means the library API that parses arbitrary strings doesn't
+  // have to worry about what version the code should be interpreted as.
+  //
+  // But with patterns, a small number of switch cases are no longer
+  // syntactically valid. Breakage from this is very rare. Instead of adding
+  // the machinery to detect language versions (which is likely to be slow and
+  // brittle), we just try parsing everything with patterns enabled. When a
+  // parse error occurs, we try parsing it again with pattern disabled. If that
+  // happens to parse without error, then we use that result instead.
+  ParseStringResult _parse(String source, String? uri,
+      {required bool patterns}) {
+    var version = patterns ? Version(3, 3, 0) : Version(2, 19, 0);
+
+    // Don't pass the formatter's own experiment flag to the parser.
+    var experiments = experimentFlags.toList();
+    experiments.remove(tallStyleExperimentFlag);
+
+    var featureSet = FeatureSet.fromEnableFlags2(
+        sdkLanguageVersion: version, flags: experiments);
+
+    return parseString(
+      content: source,
+      featureSet: featureSet,
+      path: uri,
+      throwIfDiagnostics: false,
+    );
   }
 }
